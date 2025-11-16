@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configure Question - Question Bank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-journal-text me-2"></i>Question Bank System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('teacher_dashboard') }}">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="text-center mb-5">
+                    <h1 class="display-4 fw-bold mb-3" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 50%, #a5a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                        <i class="bi bi-gear me-3"></i>
+                        Question {{ current_question }}
+                    </h1>
+                    <p class="lead text-muted">Configure question {{ current_question }} of {{ total_questions }}</p>
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar" role="progressbar" style="width: {{ (current_question / (total_questions|int) * 100)|int }}%;">
+                            {{ current_question }} / {{ total_questions }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <form id="configForm">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="bi bi-sliders"></i> Question Configuration
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Subject Selection -->
+                            <div class="mb-3">
+                                <label for="subject" class="form-label">
+                                    <i class="bi bi-book"></i> Subject *
+                                </label>
+                                <select class="form-select" id="subject" name="subject" required>
+                                    <option value="">Select Subject</option>
+                                    {% for subject in subjects %}
+                                    <option value="{{ subject }}">{{ subject }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Topic Selection -->
+                            <div class="mb-3">
+                                <label for="topic" class="form-label">
+                                    <i class="bi bi-bookmark"></i> Topic *
+                                </label>
+                                <select class="form-select" id="topic" name="topic" required disabled>
+                                    <option value="">Select Topic</option>
+                                </select>
+                            </div>
+
+                            <!-- Subtopic Selection -->
+                            <div class="mb-3">
+                                <label for="subtopic" class="form-label">
+                                    <i class="bi bi-bookmark-fill"></i> Subtopic
+                                </label>
+                                <select class="form-select" id="subtopic" name="subtopic" disabled>
+                                    <option value="">Select Subtopic (Optional)</option>
+                                </select>
+                            </div>
+
+                            <!-- Difficulty Level -->
+                            <div class="mb-3">
+                                <label for="difficulty" class="form-label">
+                                    <i class="bi bi-speedometer2"></i> Difficulty Level *
+                                </label>
+                                <select class="form-select" id="difficulty" name="difficulty" required>
+                                    <option value="">Select Difficulty</option>
+                                    {% for level in difficulty_levels %}
+                                    <option value="{{ level }}">{{ level }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- AI Question Generation -->
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="want_ai_question" name="want_ai_question">
+                                    <label class="form-check-label" for="want_ai_question">
+                                        <i class="bi bi-robot"></i> Do you want AI-generated questions?
+                                    </label>
+                                    <small class="d-block text-muted mt-1">Generate AI-powered variations of questions matching this criteria</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-arrow-right"></i> Next Question
+                        </button>
+                        <button type="button" class="btn btn-info btn-lg ms-2" id="showQuestionsBtn">
+                            <i class="bi bi-list-ul"></i> Show Questions
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Questions Display Section -->
+                <div id="questionsSection" class="card mt-4" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-list-check"></i> Available Questions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="questionsList">
+                            <div class="text-center text-muted">
+                                Please select subject, topic, and difficulty to see questions
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Load topics when subject is selected
+        document.getElementById('subject').addEventListener('change', function() {
+            const subject = this.value;
+            const topicSelect = document.getElementById('topic');
+            const subtopicSelect = document.getElementById('subtopic');
+            
+            topicSelect.disabled = true;
+            subtopicSelect.disabled = true;
+            topicSelect.innerHTML = '<option value="">Select Topic</option>';
+            subtopicSelect.innerHTML = '<option value="">Select Subtopic (Optional)</option>';
+            
+            if (subject) {
+                fetch('/api/configure/topics?subject=' + encodeURIComponent(subject))
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            data.topics.forEach(topic => {
+                                const option = document.createElement('option');
+                                option.value = topic;
+                                option.textContent = topic;
+                                topicSelect.appendChild(option);
+                            });
+                            topicSelect.disabled = false;
+                        }
+                    });
+            }
+        });
+
+        // Load subtopics when topic is selected
+        document.getElementById('topic').addEventListener('change', function() {
+            const subject = document.getElementById('subject').value;
+            const topic = this.value;
+            const subtopicSelect = document.getElementById('subtopic');
+            
+            subtopicSelect.disabled = true;
+            subtopicSelect.innerHTML = '<option value="">Select Subtopic (Optional)</option>';
+            
+            if (subject && topic) {
+                fetch('/api/configure/subtopics?subject=' + encodeURIComponent(subject) + '&topic=' + encodeURIComponent(topic))
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.subtopics && data.subtopics.length > 0) {
+                            data.subtopics.forEach(subtopic => {
+                                const option = document.createElement('option');
+                                option.value = subtopic;
+                                option.textContent = subtopic;
+                                subtopicSelect.appendChild(option);
+                            });
+                            subtopicSelect.disabled = false;
+                        } else {
+                            subtopicSelect.disabled = false;
+                        }
+                    });
+            }
+        });
+
+        // Handle form submission
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Check if a question is selected
+            const selectedQuestion = document.querySelector('input[name="selected_question"]:checked');
+            
+            if (!selectedQuestion) {
+                alert('Please select a question before proceeding to the next question.');
+                return;
+            }
+            
+            const formData = {
+                subject: document.getElementById('subject').value,
+                topic: document.getElementById('topic').value,
+                subtopic: document.getElementById('subtopic').value,
+                difficulty: document.getElementById('difficulty').value,
+                want_ai_question: document.getElementById('want_ai_question').checked,
+                selected_question_id: parseInt(selectedQuestion.value)
+            };
+            
+            fetch('/save_question_config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    if (data.completed) {
+                        let message = data.message;
+                        
+                        // Download PDFs if available
+                        if (data.pdf_urls && data.pdf_urls.length > 0) {
+                            message += '\n\nDownloading PDFs...';
+                            alert(message);
+                            
+                            // Download each PDF with a slight delay
+                            data.pdf_urls.forEach((pdf, index) => {
+                                setTimeout(() => {
+                                    const link = document.createElement('a');
+                                    link.href = pdf.url;
+                                    link.download = pdf.name;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                }, index * 500); // 500ms delay between downloads
+                            });
+                            
+                            // Redirect after all downloads start
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, data.pdf_urls.length * 500 + 1000);
+                        } else {
+                            alert(message);
+                            window.location.href = data.redirect;
+                        }
+                    } else {
+                        window.location.href = data.redirect;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving configuration');
+            });
+        });
+
+        // Show Questions Button Handler
+        document.getElementById('showQuestionsBtn').addEventListener('click', function() {
+            const subject = document.getElementById('subject').value;
+            const topic = document.getElementById('topic').value;
+            const subtopic = document.getElementById('subtopic').value;
+            const difficulty = document.getElementById('difficulty').value;
+            
+            const questionsSection = document.getElementById('questionsSection');
+            const questionsList = document.getElementById('questionsList');
+            
+            // Validate required fields
+            if (!subject || !topic || !difficulty) {
+                alert('Please select Subject, Topic, and Difficulty Level first');
+                return;
+            }
+            
+            // Show section and loading state
+            questionsSection.style.display = 'block';
+            questionsList.innerHTML = `
+                <div class="text-center text-muted">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Loading questions...
+                </div>
+            `;
+            
+            // Build query parameters
+            let queryParams = `?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}&difficulty=${encodeURIComponent(difficulty)}`;
+            if (subtopic) {
+                queryParams += `&subtopic=${encodeURIComponent(subtopic)}`;
+            }
+            
+            // Fetch matching questions
+            fetch('/api/questions/filter' + queryParams)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.questions.length > 0) {
+                        let html = '<div class="list-group">';
+                        html += '<p class="mb-3 text-info"><i class="bi bi-info-circle"></i> Click on a question to select it</p>';
+                        data.questions.forEach((q, index) => {
+                            html += `
+                                <label class="list-group-item list-group-item-action" style="cursor: pointer;">
+                                    <div class="d-flex align-items-start">
+                                        <input class="form-check-input me-3 mt-1" type="radio" name="selected_question" value="${q.id}">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex w-100 justify-content-between">
+                                                <h6 class="mb-1">${index + 1}. ${q.title}</h6>
+                                                <small class="badge bg-primary">${q.difficulty_level}</small>
+                                            </div>
+                                            <p class="mb-1 text-muted small">
+                                                <i class="bi bi-book"></i> ${q.subject} | 
+                                                <i class="bi bi-bookmark"></i> ${q.topic}
+                                                ${q.subtopic ? ' | <i class="bi bi-bookmark-fill"></i> ' + q.subtopic : ''}
+                                            </p>
+                                            <small class="text-muted">
+                                                <i class="bi bi-clock"></i> ${q.estimated_time} min | 
+                                                <i class="bi bi-tag"></i> ${q.question_type} | 
+                                                <i class="bi bi-star"></i> ${q.bloom_level}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </label>
+                            `;
+                        });
+                        html += '</div>';
+                        html += `<p class="text-center mt-3 mb-0 text-muted">Total: ${data.questions.length} question(s) found (AI-generated questions excluded)</p>`;
+                        questionsList.innerHTML = html;
+                    } else {
+                        questionsList.innerHTML = '<p class="text-muted text-center">No questions found matching the selected criteria.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    questionsList.innerHTML = '<p class="text-danger text-center">Error loading questions.</p>';
+                });
+        });
+    </script>
+</body>
+</html>
+``` 

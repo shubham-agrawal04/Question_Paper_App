@@ -58,238 +58,75 @@
                         <i class="bi bi-file-earmark-text me-3"></i>
                         Create Question Paper
                     </h1>
-                    <p class="lead text-muted">Generate custom question papers with specific criteria and requirements</p>
+                    <p class="lead text-muted">Enter the number of questions for your paper</p>
                 </div>
             </div>
         </div>
 
-        <div class="row">
-            <!-- Left Column - Paper Criteria -->
-            <div class="col-lg-8">
-                <form id="paperForm" class="needs-validation" novalidate>
-                    <!-- Basic Settings -->
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <form id="paperForm" method="POST" action="{{ url_for('create_paper') }}">
                     <div class="card mb-4">
                         <div class="card-header">
                             <h5 class="mb-0">
-                                <i class="bi bi-gear"></i> Basic Settings
+                                <i class="bi bi-gear"></i> Paper Settings
                             </h5>
                         </div>
                         <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="total_questions" class="form-label">
-                                            <i class="bi bi-hash"></i> Total Questions *
-                                        </label>
-                                        <input type="number" class="form-control" id="total_questions" name="total_questions" 
-                                               min="1" max="100" required value="10">
-                                        <div class="invalid-feedback">
-                                            Please provide the number of questions (1-100).
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="max_time" class="form-label">
-                                            <i class="bi bi-clock"></i> Maximum Time (minutes)
-                                        </label>
-                                        <input type="number" class="form-control" id="max_time" name="max_time" 
-                                               min="1" max="600" placeholder="Optional">
-                                        <small class="text-muted">Leave empty for no time constraint</small>
-                                    </div>
-                                </div>
-                            </div>
-                            
                             <div class="mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="include_ai_generated" name="include_ai_generated" checked>
-                                    <label class="form-check-label" for="include_ai_generated">
-                                        <i class="bi bi-robot"></i> Include AI-generated questions
-                                    </label>
-                                </div>
+                                <label for="num_questions" class="form-label">
+                                    <i class="bi bi-hash"></i> Number of Questions *
+                                </label>
+                                <input type="number" class="form-control" id="num_questions" name="num_questions" min="1" max="50" required>
+                                <small class="text-muted">Enter the total number of questions you want in the paper</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="num_papers" class="form-label">
+                                    <i class="bi bi-file-earmark-text"></i> Number of Papers *
+                                </label>
+                                <input type="number" class="form-control" id="num_papers" name="num_papers" min="1" max="10" required>
+                                <small class="text-muted">Enter how many question papers you want to generate</small>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Subject and Topic Selection -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="bi bi-bookmark"></i> Content Selection
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <!-- Subjects -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-book"></i> Subjects
-                                </label>
-                                <div id="subjects-container" class="border rounded p-3">
-                                    <div class="text-center text-muted">
-                                        <div class="spinner-border spinner-border-sm" role="status">
-                                            <span class="visually-hidden">Loading...</span>
-                                        </div>
-                                        Loading subjects...
-                                    </div>
-                                </div>
-                                <small class="text-muted">Select subjects to include (leave empty for all)</small>
-                            </div>
-
-                            <!-- Topics -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-bookmark"></i> Topics
-                                </label>
-                                <div id="topics-container" class="border rounded p-3">
-                                    <div class="text-muted">Select subjects first to see available topics</div>
-                                </div>
-                                <small class="text-muted">Select specific topics (leave empty for all topics in selected subjects)</small>
-                            </div>
-
-                            <!-- Subtopics -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-bookmark-fill"></i> Subtopics
-                                </label>
-                                <div id="subtopics-container" class="border rounded p-3">
-                                    <div class="text-muted">Select topics first to see available subtopics</div>
-                                </div>
-                                <small class="text-muted">Select specific subtopics (leave empty for all subtopics in selected topics)</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Difficulty Distribution -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="bi bi-speedometer2"></i> Difficulty Distribution
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                {% for level in difficulty_levels %}
-                                <div class="col-md-4">
-                                    <div class="mb-3">
-                                        <label for="difficulty_{{ level.lower() }}" class="form-label">{{ level }}</label>
-                                        <input type="number" class="form-control difficulty-input" 
-                                               id="difficulty_{{ level.lower() }}" name="difficulty_{{ level.lower() }}" 
-                                               min="0" max="50" value="0">
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            <small class="text-muted">Specify number of questions for each difficulty level (leave all as 0 for random distribution)</small>
-                        </div>
-                    </div>
-
-                    <!-- Question Types and Bloom Levels -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="bi bi-filter"></i> Additional Filters
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <!-- Question Types -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-list-check"></i> Question Types
-                                </label>
-                                <div class="row">
-                                    {% for qtype in question_types %}
-                                    <div class="col-md-4">
-                                        <div class="form-check">
-                                            <input class="form-check-input question-type-check" type="checkbox" 
-                                                   id="qtype_{{ loop.index }}" value="{{ qtype }}">
-                                            <label class="form-check-label" for="qtype_{{ loop.index }}">
-                                                {{ qtype }}
-                                            </label>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                <small class="text-muted">Select question types to include (leave empty for all types)</small>
-                            </div>
-
-                            <!-- Bloom Levels -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-diagram-3"></i> Bloom's Taxonomy Levels
-                                </label>
-                                <div class="row">
-                                    {% for level in bloom_levels %}
-                                    <div class="col-md-4">
-                                        <div class="form-check">
-                                            <input class="form-check-input bloom-level-check" type="checkbox" 
-                                                   id="bloom_{{ loop.index }}" value="{{ level }}">
-                                            <label class="form-check-label" for="bloom_{{ loop.index }}">
-                                                {{ level }}
-                                            </label>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                <small class="text-muted">Select Bloom levels to include (leave empty for all levels)</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Generate Button -->
                     <div class="text-center mb-4">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="bi bi-magic"></i> Generate Paper
-                        </button>
-                        <button type="reset" class="btn btn-secondary btn-lg ms-2">
-                            <i class="bi bi-arrow-clockwise"></i> Reset
+                            <i class="bi bi-magic"></i> Generate Question Paper
                         </button>
                     </div>
                 </form>
-            </div>
-
-            <!-- Right Column - Preview/Results -->
-            <div class="col-lg-4">
-                <div class="card sticky-top">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-eye"></i> Paper Preview
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="paper-preview">
-                            <div class="text-center text-muted">
-                                <i class="bi bi-file-earmark display-4"></i>
-                                <p class="mt-2">Generate a paper to see preview here</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Results Modal -->
-    <div class="modal fade" id="resultsModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Generated Paper</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="modal-results">
-                    <!-- Results will be populated here -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-success" id="save-paper-btn">
-                        <i class="bi bi-download"></i> Save Paper
-                    </button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/create_paper.js') }}"></script>
+    <script>
+        document.getElementById('paperForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const numQuestions = document.getElementById('num_questions').value;
+            const numPapers = document.getElementById('num_papers').value;
+            
+            fetch('/create_paper', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'num_questions=' + numQuestions + '&num_papers=' + numPapers
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Generating ' + numPapers + ' paper(s) with ' + numQuestions + ' questions each');
+                // Redirect to configure questions page
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error submitting form');
+            });
+        });
+    </script>
 </body>
 </html>
