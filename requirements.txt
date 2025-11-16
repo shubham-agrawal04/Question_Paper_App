@@ -1,8 +1,24 @@
+# Flask and Web Framework
 Flask==2.3.3
 Werkzeug==2.3.7
-Jinja2==3.1.2
-MarkupSafe==2.1.3
-itsdangerous==2.1.2
-click==8.1.7
-blinker==1.6.3
-openai
+
+# Markdown Processing
+markdown==3.4.4
+
+# PDF Generation
+WeasyPrint==59.0
+cairocffi==1.6.1
+CairoSVG==2.7.1
+
+# AI/LLM Integration
+groq==0.9.0
+
+# Database (SQLite is built-in to Python)
+# No additional package needed for SQLite3
+
+# Utilities
+python-dotenv==1.0.0
+pathlib2==2.3.7.post1
+
+# Optional but recommended
+rich==13.5.2
