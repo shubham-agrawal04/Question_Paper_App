@@ -2,17 +2,18 @@ import openai
 import os
 from typing import Dict, Any, Optional
 import json
+from groq import Groq
 
 class QuestionGenerator:
-    def __init__(self, api_key: str, model: str = "gpt-4"):
+    def __init__(self, api_key: str = "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", model: str = "openai/gpt-oss-20b"):
         """
-        Initialize the Question Generator with API credentials
+        Initialize the Question Generator with Groq API credentials
         
         Args:
-            api_key: OpenAI API key
-            model: Model to use (default: gpt-4)
+            api_key: Groq API key
+            model: Model to use (default: openai/gpt-oss-20b)
         """
-        self.client = openai.OpenAI(api_key=api_key)
+        self.client = Groq(api_key=api_key)
         self.model = model
     
     def generate_question_prompt(self, 
@@ -83,7 +84,7 @@ Provide only the generated question without explanations or metadata.
                          temperature: float = 0.7,
                          max_tokens: int = 500) -> str:
         """
-        Generate a question using the LLM API
+        Generate a question using the Groq API
         
         Args:
             question_markdown: Original question in markdown format
@@ -105,25 +106,24 @@ Provide only the generated question without explanations or metadata.
                 has_parameters, parameters_info, additional_notes
             )
             
-            # Call the LLM API
-            response = self.client.chat.completions.create(
+            # Call the Groq API
+            completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
-                        "role": "system", 
-                        "content": "You are an expert educational question generator focused on creating diverse, high-quality assessment questions."
-                    },
-                    {
-                        "role": "user", 
-                        "content": prompt
+                        "role": "user",
+                        "content": f"You are an expert educational question generator focused on creating diverse, high-quality assessment questions.\n\n{prompt}"
                     }
                 ],
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_completion_tokens=max_tokens,
+                top_p=1,
+                stream=False,
+                stop=None
             )
             
             # Extract and return the generated question
-            generated_question = response.choices[0].message.content.strip()
+            generated_question = completion.choices[0].message.content.strip()
             return generated_question
             
         except Exception as e:
@@ -153,15 +153,37 @@ Provide only the generated question without explanations or metadata.
             questions.append(question)
         return questions
 
+def generate_ai_response(prompt):
+    """Generate AI response using Groq"""
+    client = Groq(api_key="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")
+    
+    completion = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=1,
+        max_completion_tokens=8192,
+        top_p=1,
+        reasoning_effort="medium",
+        stream=True,
+        stop=None
+    )
+    
+    response = ""
+    for chunk in completion:
+        content = chunk.choices[0].delta.content or ""
+        response += content
+    
+    return response
+
 # Example usage
 def main():
-    # Initialize with your API key
-    api_key = os.getenv("OPENAI_API_KEY")  # Set your API key as environment variable
-    if not api_key:
-        print("Please set your OPENAI_API_KEY environment variable")
-        return
-    
-    generator = QuestionGenerator(api_key)
+    # Initialize with Groq (API key is now default)
+    generator = QuestionGenerator()
     
     # Example 1: Math question with parameters
     math_question = """

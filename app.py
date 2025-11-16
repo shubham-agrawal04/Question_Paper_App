@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, Response
 import sqlite3
 import os
 from datetime import datetime
@@ -7,6 +7,7 @@ from functools import wraps
 from ai import QuestionGenerator
 from teacher_backend import TeacherBackend
 from enhanced_paper_generation import EnhancedPaperGeneration
+from groq import Groq
 
 app = Flask(__name__)
 
@@ -150,6 +151,9 @@ DIFFICULTY_LEVELS = [
     'Hard'
 ]
 
+# Initialize Groq client
+groq_client = Groq(api_key="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")
+
 @app.route('/')
 def index():
     """Main landing page with login options"""
@@ -270,45 +274,38 @@ def submit_question():
         # Generate AI questions if requested
         if generate_ai_questions:
             try:
-                api_key = os.getenv("OPENAI_API_KEY")
-                if api_key:
-                    generator = QuestionGenerator(api_key)
+                # Use Groq API with default key
+                generator = QuestionGenerator()
 
-                    # Generate 3 AI questions based on the original
-                    ai_questions = generator.generate_multiple_questions(
-                        question_markdown=full_question_text,
-                        difficulty=difficulty_level,
-                        bloom_level=bloom_level,
-                        count=3,
-                        additional_notes=ai_notes
-                    )
+                # Generate 3 AI questions based on the original
+                ai_questions = generator.generate_multiple_questions(
+                    question_markdown=full_question_text,
+                    difficulty=difficulty_level,
+                    bloom_level=bloom_level,
+                    count=3,
+                    additional_notes=ai_notes
+                )
 
-                    # Save each AI-generated question
-                    for i, ai_question in enumerate(ai_questions):
-                        ai_title = f"{title} - AI Variant {i+1}"
+                # Save each AI-generated question
+                for i, ai_question in enumerate(ai_questions):
+                    ai_title = f"{title} - AI Variant {i+1}"
 
-                        cursor.execute('''
-                            INSERT INTO questions (title, question_type, subject, topic, subtopic,
-                                                 difficulty_level, estimated_time, bloom_level,
-                                                 is_ai_generated, ai_generation_notes, parent_question_id)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (ai_title, question_type, subject, topic, subtopic,
-                              difficulty_level, int(estimated_time), bloom_level, True, ai_notes, question_id))
+                    cursor.execute('''
+                        INSERT INTO questions (title, question_type, subject, topic, subtopic,
+                                             difficulty_level, estimated_time, bloom_level,
+                                             is_ai_generated, ai_generation_notes, parent_question_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (ai_title, question_type, subject, topic, subtopic,
+                          difficulty_level, int(estimated_time), bloom_level, True, ai_notes, question_id))
 
-                        ai_question_id = cursor.lastrowid
-                        ai_file_path = save_markdown_file(folder_path, ai_question_id, ai_question)
+                    ai_question_id = cursor.lastrowid
+                    ai_file_path = save_markdown_file(folder_path, ai_question_id, ai_question)
 
-                        generated_questions.append({
-                            'id': ai_question_id,
-                            'title': ai_title,
-                            'file_path': ai_file_path
-                        })
-
-                else:
-                    return jsonify({
-                        'status': 'error',
-                        'message': 'OpenAI API key not configured. Cannot generate AI questions.'
-                    }), 400
+                    generated_questions.append({
+                        'id': ai_question_id,
+                        'title': ai_title,
+                        'file_path': ai_file_path
+                    })
 
             except Exception as ai_error:
                 # Continue with original question even if AI generation fails
@@ -1030,6 +1027,33 @@ def teacher_get_statistics():
             'status': 'error',
             'message': str(e)
         }), 400
+
+@app.route('/generate', methods=['POST'])
+def generate():
+    prompt = request.json.get('prompt')
+    
+    completion = groq_client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt  # Your existing prompt variable
+            }
+        ],
+        temperature=1,
+        max_completion_tokens=8192,
+        top_p=1,
+        reasoning_effort="medium",
+        stream=True,
+        stop=None
+    )
+    
+    def generate_stream():
+        for chunk in completion:
+            content = chunk.choices[0].delta.content or ""
+            yield content
+    
+    return Response(generate_stream(), mimetype='text/plain')
 
 if __name__ == '__main__':
     # Initialize database on startup
