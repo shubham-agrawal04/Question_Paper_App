@@ -12,13 +12,3 @@ CairoSVG==2.7.1
 
 # AI/LLM Integration
 groq==0.9.0
-
-# Database (SQLite is built-in to Python)
-# No additional package needed for SQLite3
-
-# Utilities
-python-dotenv==1.0.0
-pathlib2==2.3.7.post1
-
-# Optional but recommended
-rich==13.5.2
