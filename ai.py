@@ -1,11 +1,10 @@
-import openai
-import os
 from typing import Dict, Any, Optional
-import json
+import os
 from groq import Groq
+from dotenv import load_dotenv
 
 class QuestionGenerator:
-    def __init__(self, api_key: str = "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", model: str = "openai/gpt-oss-20b"):
+    def __init__(self, api_key: str = os.getenv("GROQ_API_KEY"), model: str = "openai/gpt-oss-20b"):
         """
         Initialize the Question Generator with Groq API credentials
         
@@ -116,7 +115,7 @@ Provide only the generated question without explanations or metadata.
                     }
                 ],
                 temperature=temperature,
-                max_completion_tokens=max_tokens,
+                max_tokens=max_tokens,
                 top_p=1,
                 stream=False,
                 stop=None
@@ -155,7 +154,7 @@ Provide only the generated question without explanations or metadata.
 
 def generate_ai_response(prompt):
     """Generate AI response using Groq"""
-    client = Groq(api_key="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")
+    client = Groq(api_key="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")
     
     completion = client.chat.completions.create(
         model="openai/gpt-oss-20b",
@@ -166,7 +165,7 @@ def generate_ai_response(prompt):
             }
         ],
         temperature=1,
-        max_completion_tokens=8192,
+        max_tokens=8192,
         top_p=1,
         reasoning_effort="medium",
         stream=True,
@@ -182,8 +181,10 @@ def generate_ai_response(prompt):
 
 # Example usage
 def main():
+    load_dotenv()
+    api_key = os.getenv("GROQ_API_KEY")
     # Initialize with Groq (API key is now default)
-    generator = QuestionGenerator()
+    generator = QuestionGenerator(api_key=api_key)
     
     # Example 1: Math question with parameters
     math_question = """

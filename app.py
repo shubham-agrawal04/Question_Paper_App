@@ -155,7 +155,7 @@ DIFFICULTY_LEVELS = [
 ]
 
 # Initialize Groq client
-groq_client = Groq(api_key="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")
+groq_client = Groq(api_key="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")
 
 @app.route('/')
 def index():
