@@ -3,3 +3,5 @@ __pycache__
 *.log
 *~
 paper_set_*
+Question Bank/*
+!Question Bank/.gitkeep

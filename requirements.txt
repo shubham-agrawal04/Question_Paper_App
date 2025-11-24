@@ -12,3 +12,5 @@ CairoSVG==2.7.1
 
 # AI/LLM Integration
 groq==0.9.0
+dotenv
+httpx==0.27.2
