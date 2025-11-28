@@ -49,7 +49,7 @@ Create professional question papers with flexible criteria:
 ### Prerequisites
 *   Python 3.8+
 *   pip (Python package manager)
-*   Groq API Key
+*   Groq API Key (Change in .env file)
 
 ### Installation
 
