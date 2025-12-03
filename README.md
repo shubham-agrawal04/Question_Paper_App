@@ -65,7 +65,7 @@ Create professional question papers with flexible criteria:
     python app.py
     ```
 
-4.  Open your browser and navigate to `http://localhost:5001`
+4.  Open your browser and navigate to `http://localhost:5005`
 
 ## Usage
 

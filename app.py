@@ -1560,4 +1560,4 @@ def filter_questions():
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
-    app.run(debug=True, host='0.0.0.0', port=5005)
+    app.run(host='0.0.0.0', port=5005)
