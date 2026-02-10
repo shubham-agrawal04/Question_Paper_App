@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
@@ -37,13 +39,14 @@
                         </a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
+                            data-bs-toggle="dropdown">
                             <i class="bi bi-person-circle"></i> Teacher
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('logout') }}">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a></li>
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a></li>
                         </ul>
                     </li>
                 </ul>
@@ -55,11 +58,13 @@
         <div class="row">
             <div class="col-12">
                 <div class="text-center mb-5">
-                    <h1 class="display-4 fw-bold mb-3" style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 50%, #a5a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                    <h1 class="display-4 fw-bold mb-3"
+                        style="background: linear-gradient(135deg, #58a6ff 0%, #79c0ff 50%, #a5a5f5 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                         <i class="bi bi-journal-text me-3"></i>
                         Teacher Question Entry Form
                     </h1>
-                    <p class="lead text-muted">Create and organize educational questions with AI assistance and markdown support</p>
+                    <p class="lead text-muted">Create and organize educational questions with AI assistance and markdown
+                        support</p>
                 </div>
             </div>
         </div>
@@ -79,7 +84,7 @@
                                     <i class="bi bi-tag"></i> Title / Short Label *
                                 </label>
                                 <input type="text" class="form-control" id="title" name="title" required
-                                       placeholder="e.g., Binary Search Tree Insertion">
+                                    placeholder="e.g., Binary Search Tree Insertion">
                                 <div class="invalid-feedback">
                                     Please provide a title for the question.
                                 </div>
@@ -90,7 +95,8 @@
                                 <label for="question_type" class="form-label">
                                     <i class="bi bi-list-check"></i> Question Type *
                                 </label>
-                                <select class="form-select" id="question_type" name="question_type" required>
+                                <select class="form-select" id="question_type" name="question_type" required
+                                    onchange="toggleCorrectAnswerField()">
                                     <option value="">Select question type...</option>
                                     {% for qtype in question_types %}
                                     <option value="{{ qtype }}">{{ qtype }}</option>
@@ -101,13 +107,33 @@
                                 </div>
                             </div>
 
+                            <!-- Correct Answer / Rubric -->
+                            <div class="mb-3" id="correct_answer_section" style="display: none;">
+                                <label for="correct_answer" class="form-label">
+                                    <i class="bi bi-check-circle-fill"></i> <span id="answer_label">Correct
+                                        Answer</span>
+                                </label>
+
+                                <!-- Simple Input for MCQ, True/False, Fill-in-the-blank -->
+                                <input type="text" class="form-control" id="correct_answer" name="correct_answer"
+                                    placeholder="e.g., A, B, C, or D">
+
+                                <!-- Textarea for Rubric/Complex questions -->
+                                <textarea class="form-control" id="answer_rubric" name="answer_rubric" rows="5"
+                                    style="display: none;"
+                                    placeholder="Enter the detailed evaluation rubric, expected key points, or code solution..."></textarea>
+
+                                <small class="text-muted" id="answer_help_text">Enter the option label (A, B, C, D)
+                                    corresponding to the correct answer.</small>
+                            </div>
+
                             <!-- Subject -->
                             <div class="mb-3">
                                 <label for="subject" class="form-label">
                                     <i class="bi bi-book"></i> Subject *
                                 </label>
                                 <input type="text" class="form-control" id="subject" name="subject" required
-                                       placeholder="e.g., Algorithms">
+                                    placeholder="e.g., Algorithms">
                                 <div class="invalid-feedback">
                                     Please provide a subject.
                                 </div>
@@ -119,7 +145,7 @@
                                     <i class="bi bi-bookmark"></i> Topic *
                                 </label>
                                 <input type="text" class="form-control" id="topic" name="topic" required
-                                       placeholder="e.g., Graphs">
+                                    placeholder="e.g., Graphs">
                                 <div class="invalid-feedback">
                                     Please provide a topic.
                                 </div>
@@ -131,7 +157,7 @@
                                     <i class="bi bi-bookmark-fill"></i> Subtopic
                                 </label>
                                 <input type="text" class="form-control" id="subtopic" name="subtopic"
-                                       placeholder="e.g., Dijkstra's Algorithm">
+                                    placeholder="e.g., Dijkstra's Algorithm">
                             </div>
 
                             <!-- Difficulty Level -->
@@ -155,8 +181,8 @@
                                 <label for="estimated_time" class="form-label">
                                     <i class="bi bi-clock"></i> Estimated Time to Solve (minutes) *
                                 </label>
-                                <input type="number" class="form-control" id="estimated_time" name="estimated_time" 
-                                       min="1" max="300" required placeholder="e.g., 8">
+                                <input type="number" class="form-control" id="estimated_time" name="estimated_time"
+                                    min="1" max="300" required placeholder="e.g., 8">
                                 <div class="invalid-feedback">
                                     Please provide an estimated time (1-300 minutes).
                                 </div>
@@ -189,12 +215,14 @@
                                     <!-- AI Generation Checkbox -->
                                     <div class="mb-3">
                                         <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="generate_ai_questions" name="generate_ai_questions">
+                                            <input class="form-check-input" type="checkbox" id="generate_ai_questions"
+                                                name="generate_ai_questions">
                                             <label class="form-check-label" for="generate_ai_questions">
                                                 <i class="bi bi-magic"></i> Do you want AI generated new questions?
                                             </label>
                                         </div>
-                                        <small class="text-muted">Generate 3 additional question variants using AI based on your original question</small>
+                                        <small class="text-muted">Generate 3 additional question variants using AI based
+                                            on your original question</small>
                                     </div>
 
                                     <!-- AI Notes Field -->
@@ -203,14 +231,15 @@
                                             <i class="bi bi-lightbulb"></i> Notes for AI
                                         </label>
                                         <textarea class="form-control" id="ai_notes" name="ai_notes" rows="3"
-                                                  placeholder="Provide specific instructions for AI question generation...
+                                            placeholder="Provide specific instructions for AI question generation...
 
 Examples:
 - Focus on different algorithms but same complexity
 - Use different data types (arrays, linked lists, trees)
 - Vary the context (real-world scenarios)
 - Change numerical values while maintaining difficulty"></textarea>
-                                        <small class="text-muted">Optional: Provide specific guidance on how to generate variations</small>
+                                        <small class="text-muted">Optional: Provide specific guidance on how to generate
+                                            variations</small>
                                     </div>
                                 </div>
                             </div>
@@ -232,8 +261,8 @@ Examples:
                                 <!-- Markdown Input -->
                                 <div class="col-md-6 h-100">
                                     <label for="full_question_text" class="form-label">Markdown Input:</label>
-                                    <textarea class="form-control h-75" id="full_question_text" name="full_question_text" 
-                                              required placeholder="Enter your question here using Markdown...
+                                    <textarea class="form-control h-75" id="full_question_text"
+                                        name="full_question_text" required placeholder="Enter your question here using Markdown...
 
 Example:
 # Question Title
@@ -252,7 +281,7 @@ def insert(root, value):
                                         Please provide the full question text.
                                     </div>
                                 </div>
-                                
+
                                 <!-- Markdown Preview -->
                                 <div class="col-md-6 h-100">
                                     <label class="form-label">Live Preview:</label>
@@ -300,4 +329,5 @@ def insert(root, value):
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/teacher.js') }}"></script>
 </body>
+
 </html>

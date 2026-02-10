@@ -56,6 +56,9 @@ def student_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+    conn.commit()
+    conn.close()
+
 def init_database():
     """Initialize the SQLite database with the required table"""
     conn = sqlite3.connect(DATABASE_PATH)
@@ -93,6 +96,16 @@ def init_database():
             cursor.execute('ALTER TABLE questions ADD COLUMN ai_generation_notes TEXT')
         if 'parent_question_id' not in columns:
             cursor.execute('ALTER TABLE questions ADD COLUMN parent_question_id INTEGER')
+
+    # Create question_answers table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS question_answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_id INTEGER NOT NULL,
+            correct_answer TEXT NOT NULL,
+            FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
+        )
+    ''')
 
     conn.commit()
     conn.close()
@@ -726,6 +739,23 @@ def submit_question():
             except Exception as ai_error:
                 # Continue with original question even if AI generation fails
                 print(f"AI generation error: {ai_error}")
+
+        # Save correct answer or rubric if provided
+        correct_answer = request.form.get('correct_answer')
+        answer_rubric = request.form.get('answer_rubric')
+        
+        # Determine which field to use based on what's provided
+        final_answer = None
+        if correct_answer and correct_answer.strip():
+            final_answer = correct_answer.strip()
+        elif answer_rubric and answer_rubric.strip():
+            final_answer = answer_rubric.strip()
+            
+        if final_answer:
+            cursor.execute('''
+                INSERT INTO question_answers (question_id, correct_answer)
+                VALUES (?, ?)
+            ''', (question_id, final_answer))
 
         conn.commit()
         conn.close()
