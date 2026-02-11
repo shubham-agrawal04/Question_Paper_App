@@ -103,9 +103,34 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             question_id INTEGER NOT NULL,
             correct_answer TEXT NOT NULL,
+            max_marks REAL DEFAULT 1.0,
+            min_marks REAL DEFAULT 0.0,
+            max_scored REAL DEFAULT 0.0,
+            min_scored REAL DEFAULT 0.0,
+            avg_scored REAL DEFAULT 0.0,
+            total_attempts INTEGER DEFAULT 0,
+            avg_time_taken REAL DEFAULT 0.0,
             FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
         )
     ''')
+    
+    # Check for new columns in question_answers and add them if missing
+    cursor.execute("PRAGMA table_info(question_answers)")
+    qa_columns = [row[1] for row in cursor.fetchall()]
+    
+    new_qa_columns = {
+        'max_marks': 'REAL DEFAULT 1.0',
+        'min_marks': 'REAL DEFAULT 0.0',
+        'max_scored': 'REAL DEFAULT 0.0',
+        'min_scored': 'REAL DEFAULT 0.0',
+        'avg_scored': 'REAL DEFAULT 0.0',
+        'total_attempts': 'INTEGER DEFAULT 0',
+        'avg_time_taken': 'REAL DEFAULT 0.0'
+    }
+    
+    for col, definition in new_qa_columns.items():
+        if col not in qa_columns:
+            cursor.execute(f'ALTER TABLE question_answers ADD COLUMN {col} {definition}')
 
     conn.commit()
     conn.close()
@@ -741,8 +766,10 @@ def submit_question():
                 print(f"AI generation error: {ai_error}")
 
         # Save correct answer or rubric if provided
+        # Save correct answer or rubric if provided
         correct_answer = request.form.get('correct_answer')
         answer_rubric = request.form.get('answer_rubric')
+        max_marks = request.form.get('max_marks')
         
         # Determine which field to use based on what's provided
         final_answer = None
@@ -752,10 +779,15 @@ def submit_question():
             final_answer = answer_rubric.strip()
             
         if final_answer:
+            try:
+                max_marks_val = float(max_marks) if max_marks else 1.0
+            except ValueError:
+                max_marks_val = 1.0
+
             cursor.execute('''
-                INSERT INTO question_answers (question_id, correct_answer)
-                VALUES (?, ?)
-            ''', (question_id, final_answer))
+                INSERT INTO question_answers (question_id, correct_answer, max_marks)
+                VALUES (?, ?, ?)
+            ''', (question_id, final_answer, max_marks_val))
 
         conn.commit()
         conn.close()
