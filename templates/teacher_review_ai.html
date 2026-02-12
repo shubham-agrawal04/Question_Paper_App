@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review AI-Generated Questions</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-journal-text me-2"></i>Question Bank System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('teacher_dashboard') }}">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('teacher') }}">
+                            <i class="bi bi-plus-circle"></i> Add Question
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('review_ai_questions_page') }}">
+                            <i class="bi bi-check2-square"></i> Review AI Questions
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
+                            data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> Teacher
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="display-5 fw-bold mb-4">
+                    <i class="bi bi-robot"></i> Review AI-Generated Questions
+                </h1>
+                <p class="lead text-muted">Accept or reject AI-generated question variants</p>
+
+                <!-- Filters -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <select class="form-select" id="filterStatus">
+                                    <option value="">All Statuses</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="accepted">Accepted</option>
+                                    <option value="rejected">Rejected</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="text" class="form-control" id="searchTitle"
+                                    placeholder="Search by title...">
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-primary" onclick="loadQuestions()">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Questions List -->
+                <div id="questionsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let allQuestions = [];
+
+        // Load questions on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            loadQuestions();
+        });
+
+        async function loadQuestions() {
+            try {
+                const response = await fetch('/api/educator/review_ai_questions');
+                const data = await response.json();
+
+                if (data.questions) {
+                    allQuestions = data.questions;
+                    displayQuestions(allQuestions);
+                } else {
+                    showError('Failed to load questions');
+                }
+            } catch (error) {
+                showError('Error loading questions: ' + error.message);
+            }
+        }
+
+        function displayQuestions(questions) {
+            const container = document.getElementById('questionsContainer');
+
+            if (questions.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No AI-generated questions found.</div>';
+                return;
+            }
+
+            let html = '';
+            questions.forEach(q => {
+                const statusBadge = getStatusBadge(q.acceptance_status);
+                const approvalRatio = q.approval_ratio;
+
+                html += `
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-0">${q.title}</h5>
+                                <small class="text-muted">
+                                    ${q.subject} - ${q.topic} | ${q.question_type}
+                                </small>
+                            </div>
+                            <div>
+                                ${statusBadge}
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="mb-2">
+                                        <strong>Student Feedback:</strong> ${approvalRatio}
+                                        ${q.feedback_count > 0 ? `(${q.approvals} approved)` : ''}
+                                    </p>
+                                    <p class="mb-2">
+                                        <strong>Created:</strong> ${new Date(q.created_at).toLocaleDateString()}
+                                    </p>
+                                    ${q.educator_reviewed ? `<p class="mb-2"><strong>Reviewed by:</strong> ${q.reviewed_by || 'Educator'}</p>` : ''}
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    ${getActionButtons(q)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'pending': '<span class="badge bg-warning text-dark">Pending</span>',
+                'accepted': '<span class="badge bg-success">Accepted</span>',
+                'rejected': '<span class="badge bg-danger">Rejected</span>'
+            };
+            return badges[status] || '<span class="badge bg-secondary">Unknown</span>';
+        }
+
+        function getActionButtons(question) {
+            if (question.acceptance_status === 'accepted') {
+                return `<button class="btn btn-sm btn-outline-danger" onclick="rejectQuestion(${question.id})">
+                            <i class="bi bi-x-circle"></i> Reject
+                        </button>`;
+            } else if (question.acceptance_status === 'rejected') {
+                return `<button class="btn btn-sm btn-outline-success" onclick="acceptQuestion(${question.id})">
+                            <i class="bi bi-check-circle"></i> Accept
+                        </button>`;
+            } else {
+                return `
+                    <button class="btn btn-sm btn-success me-2" onclick="acceptQuestion(${question.id})">
+                        <i class="bi bi-check-circle"></i> Accept
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="rejectQuestion(${question.id})">
+                        <i class="bi bi-x-circle"></i> Reject
+                    </button>
+                `;
+            }
+        }
+
+        async function acceptQuestion(questionId) {
+            if (!confirm('Are you sure you want to accept this AI-generated question?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/educator/accept_question/${questionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showSuccess(data.message);
+                    loadQuestions();
+                } else {
+                    showError(data.error || 'Failed to accept question');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        async function rejectQuestion(questionId) {
+            if (!confirm('Are you sure you want to reject this AI-generated question? It will be excluded from paper generation.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/educator/reject_question/${questionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showSuccess(data.message);
+                    loadQuestions();
+                } else {
+                    showError(data.error || 'Failed to reject question');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        function showSuccess(message) {
+            alert(message);
+        }
+
+        function showError(message) {
+            alert('Error: ' + message);
+        }
+
+        // Filter functionality
+        document.getElementById('filterStatus').addEventListener('change', filterQuestions);
+        document.getElementById('searchTitle').addEventListener('input', filterQuestions);
+
+        function filterQuestions() {
+            const status = document.getElementById('filterStatus').value;
+            const search = document.getElementById('searchTitle').value.toLowerCase();
+
+            let filtered = allQuestions;
+
+            if (status) {
+                filtered = filtered.filter(q => q.acceptance_status === status);
+            }
+
+            if (search) {
+                filtered = filtered.filter(q => q.title.toLowerCase().includes(search));
+            }
+
+            displayQuestions(filtered);
+        }
+    </script>
+</body>
+
+</html>

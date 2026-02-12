@@ -132,6 +132,37 @@ def init_database():
         if col not in qa_columns:
             cursor.execute(f'ALTER TABLE question_answers ADD COLUMN {col} {definition}')
 
+    # Add acceptance tracking columns to questions table
+    cursor.execute("PRAGMA table_info(questions)")
+    question_columns = [row[1] for row in cursor.fetchall()]
+    
+    acceptance_columns = {
+        'acceptance_status': "TEXT DEFAULT 'pending'",  # pending, accepted, rejected
+        'educator_reviewed': 'BOOLEAN DEFAULT FALSE',
+        'reviewed_by': 'TEXT',
+        'review_timestamp': 'TIMESTAMP'
+    }
+    
+    for col, definition in acceptance_columns.items():
+        if col not in question_columns:
+            cursor.execute(f'ALTER TABLE questions ADD COLUMN {col} {definition}')
+    
+    # Create question_feedback table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS question_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_id INTEGER NOT NULL,
+            student_id TEXT NOT NULL,
+            is_question_clear BOOLEAN,
+            is_answer_correct BOOLEAN,
+            is_difficulty_appropriate BOOLEAN,
+            overall_approval BOOLEAN,
+            additional_comments TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -265,6 +296,13 @@ def teacher_management():
     """Teacher question management page"""
     return render_template('teacher_management.html')
 
+@app.route('/teacher/review_ai')
+@teacher_required
+def review_ai_questions_page():
+    """Teacher AI question review page"""
+    return render_template('teacher_review_ai.html')
+
+
 @app.route('/create_paper', methods=['GET', 'POST'])
 @teacher_required
 def create_paper():
@@ -323,7 +361,9 @@ def configure_question():
                          current_question=current_question,
                          total_questions=total_questions,
                          subjects=subjects,
-                         difficulty_levels=DIFFICULTY_LEVELS)
+                         difficulty_levels=DIFFICULTY_LEVELS,
+                         bloom_levels=BLOOM_LEVELS,
+                         question_types=QUESTION_TYPES)
 
 @app.route('/api/configure/topics', methods=['GET'])
 @teacher_required
@@ -372,12 +412,62 @@ def save_question_config():
     total_questions = int(session.get('num_questions', 0))
     selected_question_id = data.get('selected_question_id')
     want_ai_question = data.get('want_ai_question', False)
+    auto_select = data.get('auto_select', False)
     
-    # Validate that a question was selected
+    # If auto-select is enabled, randomly select a question matching criteria
+    if auto_select and not selected_question_id:
+        subject = data.get('subject')
+        topic = data.get('topic')
+        subtopic = data.get('subtopic')
+        difficulty = data.get('difficulty')
+        bloom_level = data.get('bloom_level')
+        question_type = data.get('question_type')
+        
+        # Validate required criteria
+        if not all([subject, topic, difficulty, bloom_level, question_type]):
+            return jsonify({
+                'status': 'error',
+                'message': 'Subject, topic, difficulty, bloom level, and question type are required for auto-selection'
+            }), 400
+        
+        # Query matching questions with acceptance status filter
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT id FROM questions
+            WHERE subject = ? 
+              AND topic = ? 
+              AND difficulty_level = ?
+              AND bloom_level = ?
+              AND question_type = ?
+              AND (is_ai_generated = 0 OR acceptance_status = 'accepted')
+        '''
+        params = [subject, topic, difficulty, bloom_level, question_type]
+        
+        if subtopic:
+            query += ' AND subtopic = ?'
+            params.append(subtopic)
+        
+        cursor.execute(query, params)
+        matching_questions = cursor.fetchall()
+        conn.close()
+        
+        if not matching_questions:
+            return jsonify({
+                'status': 'error',
+                'message': 'No questions found matching the specified criteria'
+            }), 404
+        
+        # Randomly select one question
+        import random
+        selected_question_id = random.choice(matching_questions)[0]
+    
+    # Validate that a question was selected (either manually or auto)
     if not selected_question_id:
         return jsonify({
             'status': 'error',
-            'message': 'Please select a question before proceeding'
+            'message': 'Please select a question or enable auto-selection before proceeding'
         }), 400
     
     # Get the question content from database
@@ -740,6 +830,11 @@ def submit_question():
                     additional_notes=ai_notes
                 )
 
+                # Get original answer if it exists (to pass to AI for variant answer generation)
+                original_answer = request.form.get('correct_answer')
+                original_rubric = request.form.get('answer_rubric')
+                original_answer_text = original_answer if original_answer and original_answer.strip() else (original_rubric if original_rubric and original_rubric.strip() else None)
+
                 # Save each AI-generated question
                 for i, ai_question in enumerate(ai_questions):
                     ai_title = f"{title} - AI Variant {i+1}"
@@ -754,6 +849,31 @@ def submit_question():
 
                     ai_question_id = cursor.lastrowid
                     ai_file_path = save_markdown_file(folder_path, ai_question_id, ai_question)
+
+                    # Generate answer for this AI variant if original has an answer
+                    if original_answer_text:
+                        try:
+                            variant_answer = generator.generate_answer_for_variant(
+                                original_question=full_question_text,
+                                original_answer=original_answer_text,
+                                ai_generated_question=ai_question,
+                                question_type=question_type
+                            )
+                            
+                            # Save the generated answer for the AI variant
+                            if variant_answer and not variant_answer.startswith("Error"):
+                                try:
+                                    max_marks_val = float(request.form.get('max_marks', 1.0))
+                                except ValueError:
+                                    max_marks_val = 1.0
+                                    
+                                cursor.execute('''
+                                    INSERT INTO question_answers (question_id, correct_answer, max_marks)
+                                    VALUES (?, ?, ?)
+                                ''', (ai_question_id, variant_answer, max_marks_val))
+                                
+                        except Exception as ans_error:
+                            print(f"Answer generation error for variant {i+1}: {ans_error}")
 
                     generated_questions.append({
                         'id': ai_question_id,
@@ -1560,33 +1680,57 @@ def get_all_questions():
 @app.route('/api/questions/filter', methods=['GET'])
 @teacher_required
 def filter_questions():
-    """Filter questions based on subject, topic, subtopic, and difficulty"""
+    """Filter questions based on criteria and acceptance status"""
     try:
         subject = request.args.get('subject')
         topic = request.args.get('topic')
         subtopic = request.args.get('subtopic')
         difficulty = request.args.get('difficulty')
+        bloom_level = request.args.get('bloom_level')
+        question_type = request.args.get('question_type')
         
-        if not subject or not topic or not difficulty:
+        # Validate required fields
+        required_fields = []
+        if not subject:
+            required_fields.append('subject')
+        if not topic:
+            required_fields.append('topic')
+        if not difficulty:
+            required_fields.append('difficulty')
+        
+        if required_fields:
             return jsonify({
                 'status': 'error',
-                'message': 'Subject, topic, and difficulty are required'
+                'message': f'Missing required fields: {", ".join(required_fields)}'
             }), 400
 
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
+        # Build query with acceptance status filter for AI questions
         query = '''
             SELECT id, title, question_type, subject, topic, subtopic,
                    difficulty_level, estimated_time, bloom_level
             FROM questions
-            WHERE subject = ? AND topic = ? AND difficulty_level = ? AND is_ai_generated = 0
+            WHERE subject = ? 
+              AND topic = ? 
+              AND difficulty_level = ?
+              AND (is_ai_generated = 0 OR acceptance_status = 'accepted')
         '''
         params = [subject, topic, difficulty]
 
+        # Add optional filters
         if subtopic:
             query += ' AND subtopic = ?'
             params.append(subtopic)
+        
+        if bloom_level:
+            query += ' AND bloom_level = ?'
+            params.append(bloom_level)
+        
+        if question_type:
+            query += ' AND question_type = ?'
+            params.append(question_type)
 
         query += ' ORDER BY created_at DESC'
 
@@ -1619,7 +1763,262 @@ def filter_questions():
             'message': str(e)
         }), 400
 
+# ============================================================================
+# AI QUESTION VALIDATION ROUTES
+# ============================================================================
+
+@app.route('/api/check_feedback_needed/<int:question_id>', methods=['GET'])
+@login_required
+def check_feedback_needed(question_id):
+    """Check if a question needs student feedback"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT is_ai_generated, acceptance_status 
+            FROM questions 
+            WHERE id = ?
+        ''', (question_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return jsonify({'needs_feedback': False, 'reason': 'Question not found'})
+        
+        is_ai_generated, acceptance_status = result
+        
+        # Only AI-generated questions with 'pending' status need feedback
+        needs_feedback = bool(is_ai_generated) and acceptance_status == 'pending'
+        
+        return jsonify({
+            'needs_feedback': needs_feedback,
+            'acceptance_status': acceptance_status,
+            'is_ai_generated': bool(is_ai_generated)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/submit_feedback', methods=['POST'])
+@login_required
+@student_required
+def submit_feedback():
+    """Submit student feedback for an AI-generated question"""
+    try:
+        data = request.json
+        question_id = data.get('question_id')
+        student_id = session.get('user_id')
+        
+        # Required feedback fields
+        is_question_clear = data.get('is_question_clear')
+        is_answer_correct = data.get('is_answer_correct')
+        is_difficulty_appropriate = data.get('is_difficulty_appropriate')
+        additional_comments = data.get('additional_comments', '')
+        
+        # Calculate overall approval (all three must be True)
+        overall_approval = all([
+            is_question_clear,
+            is_answer_correct,
+            is_difficulty_appropriate
+        ])
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Check if student already submitted feedback for this question
+        cursor.execute('''
+            SELECT id FROM question_feedback 
+            WHERE question_id = ? AND student_id = ?
+        ''', (question_id, student_id))
+        
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'error': 'Feedback already submitted for this question'}), 400
+        
+        # Insert feedback
+        cursor.execute('''
+            INSERT INTO question_feedback (
+                question_id, student_id, is_question_clear, 
+                is_answer_correct, is_difficulty_appropriate, 
+                overall_approval, additional_comments
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (question_id, student_id, is_question_clear, is_answer_correct,
+              is_difficulty_appropriate, overall_approval, additional_comments))
+        
+        # Check approval ratio
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_feedback,
+                SUM(CASE WHEN overall_approval = 1 THEN 1 ELSE 0 END) as approvals
+            FROM question_feedback
+            WHERE question_id = ?
+        ''', (question_id,))
+        
+        total_feedback, approvals = cursor.fetchone()
+        approvals = approvals or 0
+        
+        # Auto-accept if 9 out of last 10 approvals
+        if total_feedback >= 10:
+            # Get last 10 feedbacks
+            cursor.execute('''
+                SELECT overall_approval FROM question_feedback
+                WHERE question_id = ?
+                ORDER BY created_at DESC
+                LIMIT 10
+            ''', (question_id,))
+            
+            last_10 = cursor.fetchall()
+            last_10_approvals = sum(1 for (approval,) in last_10 if approval)
+            
+            if last_10_approvals >= 9:
+                cursor.execute('''
+                    UPDATE questions 
+                    SET acceptance_status = 'accepted',
+                        review_timestamp = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (question_id,))
+                
+                conn.commit()
+                conn.close()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Feedback submitted. Question auto-accepted!',
+                    'approval_ratio': f'{last_10_approvals}/10',
+                    'auto_accepted': True
+                })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Feedback submitted successfully',
+            'approval_ratio': f'{approvals}/{total_feedback}',
+            'auto_accepted': False
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/educator/review_ai_questions', methods=['GET'])
+@login_required
+@teacher_required
+def review_ai_questions():
+    """Get list of AI-generated questions for educator review"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                q.id, q.title, q.question_type, q.subject, q.topic,
+                q.acceptance_status, q.educator_reviewed, q.reviewed_by,
+                q.parent_question_id, q.created_at,
+                COUNT(f.id) as feedback_count,
+                SUM(CASE WHEN f.overall_approval = 1 THEN 1 ELSE 0 END) as approvals
+            FROM questions q
+            LEFT JOIN question_feedback f ON q.id = f.question_id
+            WHERE q.is_ai_generated = 1
+            GROUP BY q.id
+            ORDER BY q.created_at DESC
+        ''')
+        
+        questions = []
+        for row in cursor.fetchall():
+            approvals = row[11] or 0
+            questions.append({
+                'id': row[0],
+                'title': row[1],
+                'question_type': row[2],
+                'subject': row[3],
+                'topic': row[4],
+                'acceptance_status': row[5],
+                'educator_reviewed': bool(row[6]),
+                'reviewed_by': row[7],
+                'parent_question_id': row[8],
+                'created_at': row[9],
+                'feedback_count': row[10],
+                'approvals': approvals,
+                'approval_ratio': f'{approvals}/{row[10]}' if row[10] > 0 else 'No feedback'
+            })
+        
+        conn.close()
+        return jsonify({'questions': questions})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/educator/accept_question/<int:question_id>', methods=['POST'])
+@login_required
+@teacher_required
+def educator_accept_question(question_id):
+    """Educator manually accepts an AI-generated question"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE questions 
+            SET acceptance_status = 'accepted',
+                educator_reviewed = 1,
+                reviewed_by = ?,
+                review_timestamp = CURRENT_TIMESTAMP
+            WHERE id = ? AND is_ai_generated = 1
+        ''', (session.get('user_id'), question_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'Question not found or not an AI-generated question'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Question accepted successfully'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/educator/reject_question/<int:question_id>', methods=['POST'])
+@login_required
+@teacher_required
+def educator_reject_question(question_id):
+    """Educator rejects an AI-generated question (soft delete)"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE questions 
+            SET acceptance_status = 'rejected',
+                educator_reviewed = 1,
+                reviewed_by = ?,
+                review_timestamp = CURRENT_TIMESTAMP
+            WHERE id = ? AND is_ai_generated = 1
+        ''', (session.get('user_id'), question_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'Question not found or not an AI-generated question'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Question rejected successfully'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
     app.run(host='0.0.0.0', port=5005)
+

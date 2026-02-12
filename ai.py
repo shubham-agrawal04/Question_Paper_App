@@ -151,6 +151,84 @@ Provide only the generated question without explanations or metadata.
             )
             questions.append(question)
         return questions
+    
+    def generate_answer_for_variant(self,
+                                   original_question: str,
+                                   original_answer: str,
+                                   ai_generated_question: str,
+                                   question_type: str) -> str:
+        """
+        Generate the correct answer/rubric for an AI-generated question variant
+        based on the original question and its answer.
+        
+        Args:
+            original_question: The original question text
+            original_answer: The correct answer/rubric for the original question
+            ai_generated_question: The AI-generated variant question
+            question_type: Type of question (MCQ, Coding, etc.)
+            
+        Returns:
+            Generated answer/rubric for the variant question
+        """
+        prompt = f"""You are an expert educational assessment developer. You have been given:
+
+1. An ORIGINAL question and its correct answer/rubric
+2. An AI-GENERATED VARIANT of that question
+
+Your task is to generate the corresponding correct answer/rubric for the AI-generated variant question.
+
+## ORIGINAL QUESTION:
+{original_question}
+
+## ORIGINAL CORRECT ANSWER/RUBRIC:
+{original_answer}
+
+## AI-GENERATED VARIANT QUESTION:
+{ai_generated_question}
+
+## QUESTION TYPE: {question_type}
+
+## INSTRUCTIONS:
+Based on the relationship between the original question and its answer, generate the correct answer/rubric for the AI-generated variant.
+
+**IMPORTANT GUIDELINES:**
+- For MCQ: Provide only the option letter (A, B, C, D) that is correct in the variant
+- For True/False: Provide only "True" or "False"
+- For Fill-in-the-blank: Provide the exact word/phrase expected as the answer
+- For Numerical: Provide the numerical answer with any necessary steps
+- For Coding: Provide the expected code solution or algorithm steps
+- For Short Answer/Descriptive: Provide a detailed rubric with key points that should be present in a correct answer
+
+Maintain the same level of detail and grading criteria as the original answer/rubric.
+Provide ONLY the answer/rubric, without any explanations or preamble.
+"""
+        
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise educational content generator. Output only the requested answer/rubric without any extra commentary."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.5,  # Lower temperature for consistency
+                max_tokens=1000,
+                top_p=1,
+                stream=False,
+                stop=None
+            )
+            
+            generated_answer = completion.choices[0].message.content.strip()
+            return generated_answer
+            
+        except Exception as e:
+            return f"Error generating answer: {str(e)}"
+
 
 def generate_ai_response(prompt):
     """Generate AI response using Groq"""
