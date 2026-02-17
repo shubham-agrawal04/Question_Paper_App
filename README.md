@@ -723,7 +723,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Authors
 
-- **Your Name** - *Initial work*
+- **Shubham Agrawal**
+- **Vraj Shah**
+- **Pranjal Gaur**
+- **Dewansh Singh Chandel**
 
 ---
 
@@ -758,4 +761,4 @@ For issues and questions:
 
 ---
 
-**Made with ❤️ by educators, for educators**
+

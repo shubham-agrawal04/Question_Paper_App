@@ -56,143 +56,164 @@ def student_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-    conn.commit()
-    conn.close()
-
 def init_database():
     """Initialize the SQLite database with all required tables"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    try:
+        print(f"[INFO] Initializing database at: {DATABASE_PATH}")
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
 
-    # Create teachers table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS teachers (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
-        )
-    ''')
-    
-    # Create students table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS students (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
-        )
-    ''')
-
-    # Check if the questions table exists and get its schema
-    cursor.execute("PRAGMA table_info(questions)")
-    columns = [row[1] for row in cursor.fetchall()]
-
-    if not columns:
-        # Create new questions table with all columns
+        # Create teachers table
+        print("[INFO] Creating teachers table...")
         cursor.execute('''
-            CREATE TABLE questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                question_type TEXT NOT NULL,
-                subject TEXT NOT NULL,
-                topic TEXT NOT NULL,
-                subtopic TEXT,
-                difficulty_level TEXT NOT NULL,
-                estimated_time INTEGER NOT NULL,
-                bloom_level TEXT NOT NULL,
-                is_ai_generated BOOLEAN DEFAULT FALSE,
-                ai_generation_notes TEXT,
-                parent_question_id INTEGER,
-                teacher_id TEXT,
-                has_explanation BOOLEAN DEFAULT FALSE,
-                acceptance_status TEXT DEFAULT 'pending',
-                educator_reviewed BOOLEAN DEFAULT FALSE,
-                reviewed_by TEXT,
-                review_timestamp TIMESTAMP,
+            CREATE TABLE IF NOT EXISTS teachers (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                email TEXT UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (parent_question_id) REFERENCES questions (id),
-                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+                last_login TIMESTAMP
             )
         ''')
-    else:
-        # Add missing columns to existing questions table
+        
+        # Create students table
+        print("[INFO] Creating students table...")
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS students (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                email TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        ''')
+
+        # Check if the questions table exists and get its schema
         cursor.execute("PRAGMA table_info(questions)")
-        existing_columns = [row[1] for row in cursor.fetchall()]
-        
-        new_columns = {
-            'is_ai_generated': 'BOOLEAN DEFAULT FALSE',
-            'ai_generation_notes': 'TEXT',
-            'parent_question_id': 'INTEGER',
-            'teacher_id': 'TEXT',
-            'has_explanation': 'BOOLEAN DEFAULT FALSE',
-            'acceptance_status': "TEXT DEFAULT 'pending'",
-            'educator_reviewed': 'BOOLEAN DEFAULT FALSE',
-            'reviewed_by': 'TEXT',
-            'review_timestamp': 'TIMESTAMP'
-        }
-        
-        for col, definition in new_columns.items():
-            if col not in existing_columns:
-                cursor.execute(f'ALTER TABLE questions ADD COLUMN {col} {definition}')
+        columns = [row[1] for row in cursor.fetchall()]
 
-    # Create question_answers table if it doesn't exist
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS question_answers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            question_id INTEGER NOT NULL,
-            correct_answer TEXT NOT NULL,
-            max_marks REAL DEFAULT 1.0,
-            min_marks REAL DEFAULT 0.0,
-            max_scored REAL DEFAULT 0.0,
-            min_scored REAL DEFAULT 0.0,
-            avg_scored REAL DEFAULT 0.0,
-            total_attempts INTEGER DEFAULT 0,
-            avg_time_taken REAL DEFAULT 0.0,
-            FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # Create question_feedback table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS question_feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            question_id INTEGER NOT NULL,
-            student_id TEXT NOT NULL,
-            is_question_clear BOOLEAN,
-            is_answer_correct BOOLEAN,
-            is_difficulty_appropriate BOOLEAN,
-            overall_approval BOOLEAN,
-            additional_comments TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # Create student_submissions table for answer evaluation
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS student_submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id TEXT NOT NULL,
-            question_id INTEGER NOT NULL,
-            submitted_answer TEXT NOT NULL,
-            score REAL NOT NULL,
-            max_marks REAL NOT NULL,
-            time_taken REAL DEFAULT 0,
-            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (student_id) REFERENCES students(id),
-            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
-        )
-    ''')
+        if not columns:
+            # Create new questions table with all columns
+            print("[INFO] Creating questions table...")
+            cursor.execute('''
+                CREATE TABLE questions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    question_type TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    subtopic TEXT,
+                    difficulty_level TEXT NOT NULL,
+                    estimated_time INTEGER NOT NULL,
+                    bloom_level TEXT NOT NULL,
+                    is_ai_generated BOOLEAN DEFAULT FALSE,
+                    ai_generation_notes TEXT,
+                    parent_question_id INTEGER,
+                    teacher_id TEXT,
+                    has_explanation BOOLEAN DEFAULT FALSE,
+                    acceptance_status TEXT DEFAULT 'pending',
+                    educator_reviewed BOOLEAN DEFAULT FALSE,
+                    reviewed_by TEXT,
+                    review_timestamp TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (parent_question_id) REFERENCES questions (id),
+                    FOREIGN KEY (teacher_id) REFERENCES teachers (id)
+                )
+            ''')
+        else:
+            # Add missing columns to existing questions table
+            print("[INFO] Checking for missing columns in questions table...")
+            cursor.execute("PRAGMA table_info(questions)")
+            existing_columns = [row[1] for row in cursor.fetchall()]
+            
+            new_columns = {
+                'is_ai_generated': 'BOOLEAN DEFAULT FALSE',
+                'ai_generation_notes': 'TEXT',
+                'parent_question_id': 'INTEGER',
+                'teacher_id': 'TEXT',
+                'has_explanation': 'BOOLEAN DEFAULT FALSE',
+                'acceptance_status': "TEXT DEFAULT 'pending'",
+                'educator_reviewed': 'BOOLEAN DEFAULT FALSE',
+                'reviewed_by': 'TEXT',
+                'review_timestamp': 'TIMESTAMP'
+            }
+            
+            for col, definition in new_columns.items():
+                if col not in existing_columns:
+                    print(f"[INFO] Adding column: {col}")
+                    cursor.execute(f'ALTER TABLE questions ADD COLUMN {col} {definition}')
 
-    conn.commit()
-    conn.close()
+        # Create question_answers table if it doesn't exist
+        print("[INFO] Creating question_answers table...")
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS question_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_id INTEGER NOT NULL,
+                correct_answer TEXT NOT NULL,
+                max_marks REAL DEFAULT 1.0,
+                min_marks REAL DEFAULT 0.0,
+                max_scored REAL DEFAULT 0.0,
+                min_scored REAL DEFAULT 0.0,
+                avg_scored REAL DEFAULT 0.0,
+                total_attempts INTEGER DEFAULT 0,
+                avg_time_taken REAL DEFAULT 0.0,
+                FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Create question_feedback table
+        print("[INFO] Creating question_feedback table...")
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS question_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_id INTEGER NOT NULL,
+                student_id TEXT NOT NULL,
+                is_question_clear BOOLEAN,
+                is_answer_correct BOOLEAN,
+                is_difficulty_appropriate BOOLEAN,
+                overall_approval BOOLEAN,
+                additional_comments TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Create student_submissions table for answer evaluation
+        print("[INFO] Creating student_submissions table...")
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS student_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id TEXT NOT NULL,
+                question_id INTEGER NOT NULL,
+                submitted_answer TEXT NOT NULL,
+                score REAL NOT NULL,
+                max_marks REAL NOT NULL,
+                time_taken REAL DEFAULT 0,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (student_id) REFERENCES students(id),
+                FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+            )
+        ''')
+
+        conn.commit()
+        print("[SUCCESS] Database initialized successfully!")
+        print(f"[INFO] Database location: {os.path.abspath(DATABASE_PATH)}")
+        
+        # Verify tables were created
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [table[0] for table in cursor.fetchall()]
+        print(f"[INFO] Created tables: {', '.join(tables)}")
+        
+        conn.close()
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize database: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 def create_folder_structure(subject, topic, subtopic=None):

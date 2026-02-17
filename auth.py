@@ -11,7 +11,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-DATABASE_PATH = os.environ.get('DATABASE_PATH', 'question_paper.db')
+DATABASE_PATH = os.environ.get('DATABASE_PATH', 'question_bank.db')
 
 
 def hash_password(password: str) -> str:

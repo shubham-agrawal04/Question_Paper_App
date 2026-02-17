@@ -2,6 +2,7 @@ __pycache__
 .vscode
 *.log
 *~
-paper_set_*
-Question Bank/*
+# paper_set_*
+# Question Bank/*
 !Question Bank/.gitkeep
+.env
