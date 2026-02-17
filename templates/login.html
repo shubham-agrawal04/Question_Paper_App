@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Question Paper System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            max-width: 450px;
+            width: 100%;
+        }
+
+        .login-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .login-body {
+            padding: 2rem;
+        }
+
+        .role-selector {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .role-btn {
+            flex: 1;
+            padding: 1rem;
+            border: 2px solid #dee2e6;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .role-btn:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .role-btn.active {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+
+        .role-btn i {
+            font-size: 2rem;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 0.75rem;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        .register-link {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <h3 class="mb-0">
+                <i class="bi bi-journal-text"></i>
+                Question Paper System
+            </h3>
+            <p class="mb-0 mt-2">Sign in to continue</p>
+        </div>
+
+        <div class="login-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+                <!-- Role Selection -->
+                <div class="role-selector">
+                    <div class="role-btn active" data-role="teacher" onclick="selectRole('teacher')">
+                        <i class="bi bi-person-workspace"></i>
+                        <strong>Teacher</strong>
+                    </div>
+                    <div class="role-btn" data-role="student" onclick="selectRole('student')">
+                        <i class="bi bi-person"></i>
+                        <strong>Student</strong>
+                    </div>
+                </div>
+                <input type="hidden" name="role" id="roleInput" value="teacher">
+
+                <!-- Username -->
+                <div class="mb-3">
+                    <label for="username" class="form-label">
+                        <i class="bi bi-person-circle"></i> Username
+                    </label>
+                    <input type="text" class="form-control" id="username" name="username"
+                        placeholder="Enter your username" required autofocus>
+                </div>
+
+                <!-- Password -->
+                <div class="mb-3">
+                    <label for="password" class="form-label">
+                        <i class="bi bi-lock"></i> Password
+                    </label>
+                    <input type="password" class="form-control" id="password" name="password"
+                        placeholder="Enter your password" required>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign In
+                </button>
+
+                <!-- Register Link -->
+                <div class="register-link">
+                    <p class="mb-0 text-muted">Don't have an account?
+                        <a href="#" onclick="registerAs()" class="fw-bold" style="color: #667eea;">
+                            Register as <span id="registerRole">Teacher</span>
+                        </a>
+                    </p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function selectRole(role) {
+            // Update role buttons
+            document.querySelectorAll('.role-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-role="${role}"]`).classList.add('active');
+
+            // Update hidden input
+            document.getElementById('roleInput').value = role;
+
+            // Update register link
+            const registerRole = role.charAt(0).toUpperCase() + role.slice(1);
+            document.getElementById('registerRole').textContent = registerRole;
+        }
+
+        function registerAs() {
+            const role = document.getElementById('roleInput').value;
+            window.location.href = `/register/${role}`;
+        }
+    </script>
+</body>
+
+</html>

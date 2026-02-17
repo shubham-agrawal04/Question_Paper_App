@@ -9,6 +9,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const aiCheckbox = document.getElementById('generate_ai_questions');
     const aiNotesSection = document.getElementById('ai_notes_section');
 
+    // Explanation editor elements
+    const explanationCheckbox = document.getElementById('add_explanation');
+    const explanationEditor = document.getElementById('explanation-editor');
+    const explanationInput = document.getElementById('explanation_text');
+    const explanationPreview = document.getElementById('explanation-preview');
+
     // Initialize markdown preview
     updateMarkdownPreview();
 
@@ -22,13 +28,33 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('reset', function () {
         setTimeout(() => {
             updateMarkdownPreview();
+            updateExplanationPreview();
             form.classList.remove('was-validated');
             toggleAINotesSection();
+            toggleExplanationEditor();
         }, 10);
     });
 
     // AI checkbox toggle
     aiCheckbox.addEventListener('change', toggleAINotesSection);
+
+    // Explanation checkbox toggle
+    explanationCheckbox.addEventListener('change', toggleExplanationEditor);
+
+    // Explanation preview
+    explanationInput.addEventListener('input', updateExplanationPreview);
+
+    /**
+     * Toggle explanation editor visibility
+     */
+    function toggleExplanationEditor() {
+        if (explanationCheckbox.checked) {
+            explanationEditor.style.display = 'block';
+            explanationEditor.style.animation = 'fadeIn 0.3s ease-in';
+        } else {
+            explanationEditor.style.display = 'none';
+        }
+    }
 
     /**
      * Toggle AI notes section visibility
@@ -41,6 +67,30 @@ document.addEventListener('DOMContentLoaded', function () {
             aiNotesSection.style.display = 'none';
         }
     }
+
+    /**
+     * Update the explanation preview with markdown and LaTeX rendering
+     */
+    function updateExplanationPreview() {
+        const explanationText = explanationInput.value.trim();
+
+        if (!explanationText) {
+            explanationPreview.innerHTML = '<em class="text-muted">Preview will appear here as you type...</em>';
+            return;
+        }
+
+        // Render markdown
+        const htmlContent = marked.parse(explanationText);
+        explanationPreview.innerHTML = htmlContent;
+
+        // Render LaTeX with MathJax
+        if (window.MathJax) {
+            MathJax.typesetPromise([explanationPreview]).catch((err) => {
+                console.error('MathJax rendering error:', err);
+            });
+        }
+    }
+
 
     /**
      * Update the markdown preview in real-time

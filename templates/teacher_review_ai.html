@@ -5,9 +5,83 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review AI-Generated Questions</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- MathJax for LaTeX rendering -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .question-card {
+            border-left: 4px solid #6f42c1;
+            transition: all 0.3s;
+            margin-bottom: 1rem;
+        }
+
+        .question-card:hover {
+            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .question-card.accepted {
+            border-left-color: #198754;
+        }
+
+        .question-card.rejected {
+            border-left-color: #dc3545;
+        }
+
+        .filter-panel {
+            background: linear-gradient(135deg, #6f42c1 0%, #9b59b6 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+
+        .expandable-section {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .expandable-section:hover {
+            background-color: #f8f9fa;
+        }
+
+        .section-content {
+            display: none;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .section-content.show {
+            display: block;
+        }
+
+        .feedback-bar {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .feedback-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #198754 0%, #28a745 100%);
+            transition: width 0.3s;
+        }
+
+        .ai-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .no-questions {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+    </style>
 </head>
 
 <body>
@@ -34,7 +108,12 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link active" href="{{ url_for('review_ai_questions_page') }}">
-                            <i class="bi bi-check2-square"></i> Review AI Questions
+                            <i class="bi bi-robot"></i> Review AI Questions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('manage_questions') }}">
+                            <i class="bi bi-collection"></i> Manage Questions
                         </a>
                     </li>
                     <li class="nav-item dropdown">
@@ -53,48 +132,57 @@
         </div>
     </nav>
 
-    <div class="container-fluid py-4">
+    <div class="container-fluid">
         <div class="row">
             <div class="col-12">
-                <h1 class="display-5 fw-bold mb-4">
+                <h2 class="mb-4">
                     <i class="bi bi-robot"></i> Review AI-Generated Questions
-                </h1>
-                <p class="lead text-muted">Accept or reject AI-generated question variants</p>
+                </h2>
+                <p class="text-muted">Accept or reject AI-generated question variants before they're used in papers</p>
+            </div>
+        </div>
 
-                <!-- Filters -->
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <select class="form-select" id="filterStatus">
-                                    <option value="">All Statuses</option>
-                                    <option value="pending">Pending</option>
-                                    <option value="accepted">Accepted</option>
-                                    <option value="rejected">Rejected</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <input type="text" class="form-control" id="searchTitle"
-                                    placeholder="Search by title...">
-                            </div>
-                            <div class="col-md-3">
-                                <button class="btn btn-primary" onclick="loadQuestions()">
-                                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+        <!-- Filter Panel -->
+        <div class="filter-panel">
+            <h5 class="mb-3"><i class="bi bi-funnel"></i> Filter Questions</h5>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <select class="form-select" id="filterStatus">
+                        <option value="">All Statuses</option>
+                        <option value="pending" selected>Pending</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
                 </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="searchTitle" placeholder="Search by title...">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-light" onclick="loadQuestions()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                    <button class="btn btn-outline-light ms-2" onclick="clearFilters()">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                </div>
+            </div>
+        </div>
 
-                <!-- Questions List -->
-                <div id="questionsContainer"></div>
+        <!-- Questions Container -->
+        <div id="questionsContainer">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading AI-generated questions...</p>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let allQuestions = [];
+        const loadedSections = {};
 
         // Load questions on page load
         document.addEventListener('DOMContentLoaded', function () {
@@ -102,13 +190,23 @@
         });
 
         async function loadQuestions() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading AI-generated questions...</p>
+                </div>
+            `;
+
             try {
                 const response = await fetch('/api/educator/review_ai_questions');
                 const data = await response.json();
 
                 if (data.questions) {
                     allQuestions = data.questions;
-                    displayQuestions(allQuestions);
+                    filterQuestions();
                 } else {
                     showError('Failed to load questions');
                 }
@@ -116,150 +214,6 @@
                 showError('Error loading questions: ' + error.message);
             }
         }
-
-        function displayQuestions(questions) {
-            const container = document.getElementById('questionsContainer');
-
-            if (questions.length === 0) {
-                container.innerHTML = '<div class="alert alert-info">No AI-generated questions found.</div>';
-                return;
-            }
-
-            let html = '';
-            questions.forEach(q => {
-                const statusBadge = getStatusBadge(q.acceptance_status);
-                const approvalRatio = q.approval_ratio;
-
-                html += `
-                    <div class="card mb-3">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="mb-0">${q.title}</h5>
-                                <small class="text-muted">
-                                    ${q.subject} - ${q.topic} | ${q.question_type}
-                                </small>
-                            </div>
-                            <div>
-                                ${statusBadge}
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <p class="mb-2">
-                                        <strong>Student Feedback:</strong> ${approvalRatio}
-                                        ${q.feedback_count > 0 ? `(${q.approvals} approved)` : ''}
-                                    </p>
-                                    <p class="mb-2">
-                                        <strong>Created:</strong> ${new Date(q.created_at).toLocaleDateString()}
-                                    </p>
-                                    ${q.educator_reviewed ? `<p class="mb-2"><strong>Reviewed by:</strong> ${q.reviewed_by || 'Educator'}</p>` : ''}
-                                </div>
-                                <div class="col-md-6 text-end">
-                                    ${getActionButtons(q)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-        }
-
-        function getStatusBadge(status) {
-            const badges = {
-                'pending': '<span class="badge bg-warning text-dark">Pending</span>',
-                'accepted': '<span class="badge bg-success">Accepted</span>',
-                'rejected': '<span class="badge bg-danger">Rejected</span>'
-            };
-            return badges[status] || '<span class="badge bg-secondary">Unknown</span>';
-        }
-
-        function getActionButtons(question) {
-            if (question.acceptance_status === 'accepted') {
-                return `<button class="btn btn-sm btn-outline-danger" onclick="rejectQuestion(${question.id})">
-                            <i class="bi bi-x-circle"></i> Reject
-                        </button>`;
-            } else if (question.acceptance_status === 'rejected') {
-                return `<button class="btn btn-sm btn-outline-success" onclick="acceptQuestion(${question.id})">
-                            <i class="bi bi-check-circle"></i> Accept
-                        </button>`;
-            } else {
-                return `
-                    <button class="btn btn-sm btn-success me-2" onclick="acceptQuestion(${question.id})">
-                        <i class="bi bi-check-circle"></i> Accept
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="rejectQuestion(${question.id})">
-                        <i class="bi bi-x-circle"></i> Reject
-                    </button>
-                `;
-            }
-        }
-
-        async function acceptQuestion(questionId) {
-            if (!confirm('Are you sure you want to accept this AI-generated question?')) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/educator/accept_question/${questionId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showSuccess(data.message);
-                    loadQuestions();
-                } else {
-                    showError(data.error || 'Failed to accept question');
-                }
-            } catch (error) {
-                showError('Error: ' + error.message);
-            }
-        }
-
-        async function rejectQuestion(questionId) {
-            if (!confirm('Are you sure you want to reject this AI-generated question? It will be excluded from paper generation.')) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/educator/reject_question/${questionId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showSuccess(data.message);
-                    loadQuestions();
-                } else {
-                    showError(data.error || 'Failed to reject question');
-                }
-            } catch (error) {
-                showError('Error: ' + error.message);
-            }
-        }
-
-        function showSuccess(message) {
-            alert(message);
-        }
-
-        function showError(message) {
-            alert('Error: ' + message);
-        }
-
-        // Filter functionality
-        document.getElementById('filterStatus').addEventListener('change', filterQuestions);
-        document.getElementById('searchTitle').addEventListener('input', filterQuestions);
 
         function filterQuestions() {
             const status = document.getElementById('filterStatus').value;
@@ -277,6 +231,288 @@
 
             displayQuestions(filtered);
         }
+
+        function displayQuestions(questions) {
+            const container = document.getElementById('questionsContainer');
+
+            if (questions.length === 0) {
+                container.innerHTML = `
+                    <div class="no-questions">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <h4 class="mt-3">No questions to review</h4>
+                        <p>All AI-generated questions have been reviewed</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            questions.forEach(q => {
+                const statusClass = q.acceptance_status === 'accepted' ? 'accepted' :
+                    q.acceptance_status === 'rejected' ? 'rejected' : '';
+                const statusBadge = getStatusBadge(q.acceptance_status);
+                const approvalPercent = q.feedback_count > 0 ?
+                    Math.round((q.approvals / q.feedback_count) * 100) : 0;
+
+                html += `
+                    <div class="card question-card ${statusClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="card-title">
+                                    <i class="bi bi-robot"></i> ${q.title}
+                                    <span class="badge ai-badge ms-2">AI Generated</span>
+                                </h5>
+                                <span class="badge bg-primary">#${q.id}</span>
+                            </div>
+                            <div class="mb-2">
+                                <span class="badge bg-info">${q.question_type}</span>
+                                <span class="badge bg-secondary">${q.subject}</span>
+                                <span class="badge bg-secondary">${q.topic}</span>
+                                <span class="badge bg-warning text-dark">${q.difficulty_level}</span>
+                                <span class="badge bg-dark">${q.bloom_level}</span>
+                                ${statusBadge}
+                            </div>
+                            
+                            <!-- Student Feedback Bar -->
+                            ${q.feedback_count > 0 ? `
+                                <div class="mb-3">
+                                    <small class="text-muted d-block mb-1">
+                                        <i class="bi bi-people"></i> Student Feedback: ${q.approvals}/${q.feedback_count} approved (${approvalPercent}%)
+                                    </small>
+                                    <div class="feedback-bar">
+                                        <div class="feedback-bar-fill" style="width: ${approvalPercent}%"></div>
+                                    </div>
+                                </div>
+                            ` : '<p class="text-muted small mb-3"><i class="bi bi-info-circle"></i> No student feedback yet</p>'}
+                            
+                            <div class="d-flex justify-content-between align-items-center">
+                                <p class="text-muted small mb-0">
+                                    <i class="bi bi-calendar"></i> Created: ${new Date(q.created_at).toLocaleDateString()}
+                                    ${q.educator_reviewed ? `<br><i class="bi bi-person-check"></i> Reviewed by: ${q.reviewed_by || 'Educator'}` : ''}
+                                </p>
+                                <div>
+                                    ${getActionButtons(q)}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Expandable Sections -->
+                        <div class="expandable-section border-top" onclick="toggleSection(${q.id}, 'question')">
+                            <div class="p-3">
+                                <i class="bi bi-chevron-right" id="icon-${q.id}-question"></i>
+                                <strong>Question Preview</strong>
+                            </div>
+                        </div>
+                        <div class="section-content" id="content-${q.id}-question">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="expandable-section border-top" onclick="toggleSection(${q.id}, 'answer')">
+                            <div class="p-3">
+                                <i class="bi bi-chevron-right" id="icon-${q.id}-answer"></i>
+                                <strong>Answer / Rubric</strong>
+                            </div>
+                        </div>
+                        <div class="section-content" id="content-${q.id}-answer">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                        
+                        ${q.has_explanation ? `
+                            <div class="expandable-section border-top" onclick="toggleSection(${q.id}, 'explanation')">
+                                <div class="p-3">
+                                    <i class="bi bi-chevron-right" id="icon-${q.id}-explanation"></i>
+                                    <strong>Explanation</strong>
+                                </div>
+                            </div>
+                            <div class="section-content" id="content-${q.id}-explanation">
+                                <div class="spinner-border spinner-border-sm" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'pending': '<span class="badge bg-warning text-dark">Pending Review</span>',
+                'accepted': '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Accepted</span>',
+                'rejected': '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Rejected</span>'
+            };
+            return badges[status] || '<span class="badge bg-secondary">Unknown</span>';
+        }
+
+        function getActionButtons(question) {
+            if (question.acceptance_status === 'accepted') {
+                return `
+                    <button class="btn btn-sm btn-outline-danger" onclick="rejectQuestion(${question.id})">
+                        <i class="bi bi-x-circle"></i> Reject
+                    </button>
+                `;
+            } else if (question.acceptance_status === 'rejected') {
+                return `
+                    <button class="btn btn-sm btn-outline-success" onclick="acceptQuestion(${question.id})">
+                        <i class="bi bi-check-circle"></i> Accept
+                    </button>
+                `;
+            } else {
+                return `
+                    <button class="btn btn-sm btn-success me-2" onclick="acceptQuestion(${question.id})">
+                        <i class="bi bi-check-circle"></i> Accept
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="rejectQuestion(${question.id})">
+                        <i class="bi bi-x-circle"></i> Reject
+                    </button>
+                `;
+            }
+        }
+
+        function toggleSection(questionId, section) {
+            const content = document.getElementById(`content-${questionId}-${section}`);
+            const icon = document.getElementById(`icon-${questionId}-${section}`);
+
+            if (content.classList.contains('show')) {
+                content.classList.remove('show');
+                icon.className = 'bi bi-chevron-right';
+            } else {
+                content.classList.add('show');
+                icon.className = 'bi bi-chevron-down';
+
+                // Load content if not already loaded
+                const key = `${questionId}-${section}`;
+                if (!loadedSections[key]) {
+                    loadSectionContent(questionId, section);
+                    loadedSections[key] = true;
+                }
+            }
+        }
+
+        function loadSectionContent(questionId, section) {
+            fetch(`/api/questions/${questionId}/details`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const content = document.getElementById(`content-${questionId}-${section}`);
+
+                        if (section === 'question') {
+                            const questionHtml = marked.parse(data.question.question_text);
+                            content.innerHTML = `<div class="border rounded p-3 bg-white">${questionHtml}</div>`;
+                        } else if (section === 'answer') {
+                            if (data.answer) {
+                                const answerHtml = marked.parse(data.answer.correct_answer);
+                                content.innerHTML = `
+                                    <div class="mb-3">
+                                        <strong>Correct Answer:</strong>
+                                        <div class="border rounded p-3 mt-2 bg-white">${answerHtml}</div>
+                                    </div>
+                                    <div>
+                                        <strong>Max Marks:</strong> ${data.answer.max_marks}
+                                    </div>
+                                `;
+                            } else {
+                                content.innerHTML = '<p class="text-muted">No answer/rubric available.</p>';
+                            }
+                        } else if (section === 'explanation') {
+                            if (data.question.explanation_text) {
+                                const explanationHtml = marked.parse(data.question.explanation_text);
+                                content.innerHTML = `<div class="border rounded p-3 bg-white">${explanationHtml}</div>`;
+                            } else {
+                                content.innerHTML = '<p class="text-muted">No explanation available.</p>';
+                            }
+                        }
+
+                        // Render LaTeX with MathJax
+                        if (window.MathJax) {
+                            MathJax.typesetPromise([content]).catch(err => console.error('MathJax error:', err));
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const content = document.getElementById(`content-${questionId}-${section}`);
+                    content.innerHTML = '<div class="alert alert-danger">Error loading content</div>';
+                });
+        }
+
+        async function acceptQuestion(questionId) {
+            if (!confirm('Accept this AI-generated question? It will be available for use in papers.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/educator/accept_question/${questionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('success', data.message);
+                    loadQuestions();
+                } else {
+                    showToast('error', data.error || 'Failed to accept question');
+                }
+            } catch (error) {
+                showToast('error', 'Error: ' + error.message);
+            }
+        }
+
+        async function rejectQuestion(questionId) {
+            if (!confirm('Reject this AI-generated question? It will be excluded from paper generation.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/educator/reject_question/${questionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('success', data.message);
+                    loadQuestions();
+                } else {
+                    showToast('error', data.error || 'Failed to reject question');
+                }
+            } catch (error) {
+                showToast('error', 'Error: ' + error.message);
+            }
+        }
+
+        function showToast(type, message) {
+            // Simple alert for now - could be replaced with Bootstrap toast
+            alert(message);
+        }
+
+        function showError(message) {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> ${message}
+                </div>
+            `;
+        }
+
+        function clearFilters() {
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('searchTitle').value = '';
+            filterQuestions();
+        }
+
+        // Filter event listeners
+        document.getElementById('filterStatus').addEventListener('change', filterQuestions);
+        document.getElementById('searchTitle').addEventListener('input', filterQuestions);
     </script>
 </body>
 

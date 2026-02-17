@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, Response, send_file
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
 from ai import QuestionGenerator
@@ -11,21 +11,21 @@ from groq import Groq
 import markdown
 from weasyprint import HTML, CSS
 from io import BytesIO
+import auth  # Import authentication module
+from evaluator import Evaluator  # Import evaluator module
 
 app = Flask(__name__)
 
-# Configuration
-app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
+# Configuration - Session Security
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
 # Database and folder configuration
 DATABASE_PATH = 'question_bank.db'
 QUESTION_BANK_FOLDER = 'Question Bank'
 
-# Simple user credentials (in production, use proper database with hashed passwords)
-USERS = {
-    'teacher': {'password': 'teacher123', 'role': 'teacher'},
-    'student': {'password': 'student123', 'role': 'student'},
-}
 
 def login_required(f):
     """Decorator to require login for protected routes"""
@@ -60,16 +60,42 @@ def student_required(f):
     conn.close()
 
 def init_database():
-    """Initialize the SQLite database with the required table"""
+    """Initialize the SQLite database with all required tables"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
-    # Check if the table exists and get its schema
+    # Create teachers table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS teachers (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
+        )
+    ''')
+    
+    # Create students table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS students (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
+        )
+    ''')
+
+    # Check if the questions table exists and get its schema
     cursor.execute("PRAGMA table_info(questions)")
     columns = [row[1] for row in cursor.fetchall()]
 
     if not columns:
-        # Create new table with all columns
+        # Create new questions table with all columns
         cursor.execute('''
             CREATE TABLE questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,18 +110,37 @@ def init_database():
                 is_ai_generated BOOLEAN DEFAULT FALSE,
                 ai_generation_notes TEXT,
                 parent_question_id INTEGER,
+                teacher_id TEXT,
+                has_explanation BOOLEAN DEFAULT FALSE,
+                acceptance_status TEXT DEFAULT 'pending',
+                educator_reviewed BOOLEAN DEFAULT FALSE,
+                reviewed_by TEXT,
+                review_timestamp TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (parent_question_id) REFERENCES questions (id)
+                FOREIGN KEY (parent_question_id) REFERENCES questions (id),
+                FOREIGN KEY (teacher_id) REFERENCES teachers (id)
             )
         ''')
     else:
-        # Add missing columns if they don't exist
-        if 'is_ai_generated' not in columns:
-            cursor.execute('ALTER TABLE questions ADD COLUMN is_ai_generated BOOLEAN DEFAULT FALSE')
-        if 'ai_generation_notes' not in columns:
-            cursor.execute('ALTER TABLE questions ADD COLUMN ai_generation_notes TEXT')
-        if 'parent_question_id' not in columns:
-            cursor.execute('ALTER TABLE questions ADD COLUMN parent_question_id INTEGER')
+        # Add missing columns to existing questions table
+        cursor.execute("PRAGMA table_info(questions)")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        
+        new_columns = {
+            'is_ai_generated': 'BOOLEAN DEFAULT FALSE',
+            'ai_generation_notes': 'TEXT',
+            'parent_question_id': 'INTEGER',
+            'teacher_id': 'TEXT',
+            'has_explanation': 'BOOLEAN DEFAULT FALSE',
+            'acceptance_status': "TEXT DEFAULT 'pending'",
+            'educator_reviewed': 'BOOLEAN DEFAULT FALSE',
+            'reviewed_by': 'TEXT',
+            'review_timestamp': 'TIMESTAMP'
+        }
+        
+        for col, definition in new_columns.items():
+            if col not in existing_columns:
+                cursor.execute(f'ALTER TABLE questions ADD COLUMN {col} {definition}')
 
     # Create question_answers table if it doesn't exist
     cursor.execute('''
@@ -114,39 +159,6 @@ def init_database():
         )
     ''')
     
-    # Check for new columns in question_answers and add them if missing
-    cursor.execute("PRAGMA table_info(question_answers)")
-    qa_columns = [row[1] for row in cursor.fetchall()]
-    
-    new_qa_columns = {
-        'max_marks': 'REAL DEFAULT 1.0',
-        'min_marks': 'REAL DEFAULT 0.0',
-        'max_scored': 'REAL DEFAULT 0.0',
-        'min_scored': 'REAL DEFAULT 0.0',
-        'avg_scored': 'REAL DEFAULT 0.0',
-        'total_attempts': 'INTEGER DEFAULT 0',
-        'avg_time_taken': 'REAL DEFAULT 0.0'
-    }
-    
-    for col, definition in new_qa_columns.items():
-        if col not in qa_columns:
-            cursor.execute(f'ALTER TABLE question_answers ADD COLUMN {col} {definition}')
-
-    # Add acceptance tracking columns to questions table
-    cursor.execute("PRAGMA table_info(questions)")
-    question_columns = [row[1] for row in cursor.fetchall()]
-    
-    acceptance_columns = {
-        'acceptance_status': "TEXT DEFAULT 'pending'",  # pending, accepted, rejected
-        'educator_reviewed': 'BOOLEAN DEFAULT FALSE',
-        'reviewed_by': 'TEXT',
-        'review_timestamp': 'TIMESTAMP'
-    }
-    
-    for col, definition in acceptance_columns.items():
-        if col not in question_columns:
-            cursor.execute(f'ALTER TABLE questions ADD COLUMN {col} {definition}')
-    
     # Create question_feedback table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS question_feedback (
@@ -162,9 +174,26 @@ def init_database():
             FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
         )
     ''')
+    
+    # Create student_submissions table for answer evaluation
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS student_submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id TEXT NOT NULL,
+            question_id INTEGER NOT NULL,
+            submitted_answer TEXT NOT NULL,
+            score REAL NOT NULL,
+            max_marks REAL NOT NULL,
+            time_taken REAL DEFAULT 0,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (student_id) REFERENCES students(id),
+            FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+        )
+    ''')
 
     conn.commit()
     conn.close()
+
 
 def create_folder_structure(subject, topic, subtopic=None):
     """Create the folder structure for organizing questions"""
@@ -223,52 +252,567 @@ DIFFICULTY_LEVELS = [
     'Hard'
 ]
 
+
 # Initialize Groq client
 groq_client = Groq(api_key="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")
 
 @app.route('/')
 def index():
-    """Main landing page with login options"""
-    return render_template('index.html')
-
-@app.route('/teacher-login')
-def teacher_login():
-    """Teacher login page"""
-    return render_template('teacher_login.html')
-
-@app.route('/student-login')
-def student_login():
-    """Student login page"""
-    return render_template('student_login.html')
-
-@app.route('/login', methods=['POST'])
-def login():
-    """Handle login for both teachers and students"""
-    username = request.form.get('username')
-    password = request.form.get('password')
-    role = request.form.get('role')  # 'teacher' or 'student'
-
-    if username in USERS and USERS[username]['password'] == password and USERS[username]['role'] == role:
-        session['user_id'] = username
-        session['role'] = role
-
+    """Main landing page - redirect to login if not logged in"""
+    if 'user_id' in session:
+        role = session.get('role')
         if role == 'teacher':
-            return redirect(url_for('teacher_dashboard'))
-        else:
+            return redirect(url_for('teacher'))
+        elif role == 'student':
             return redirect(url_for('student_dashboard'))
-    else:
-        flash('Invalid credentials. Please try again.', 'error')
-        if role == 'teacher':
-            return redirect(url_for('teacher_login'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Unified login page for teachers and students"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')  # 'teacher' or 'student'
+        
+        # Validate inputs
+        if not all([username, password, role]):
+            flash('Please fill in all fields.', 'danger')
+            return render_template('login.html')
+        
+        if role not in ['teacher', 'student']:
+            flash('Invalid role selected.', 'danger')
+            return render_template('login.html')
+        
+        # Authenticate user
+        user = auth.authenticate_user(username, password, role)
+        
+        if user:
+            # Set session variables
+            session.permanent = True
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['full_name'] = user['full_name']
+            session['role'] = user['role']
+            
+            flash(f'Welcome back, {user["full_name"]}!', 'success')
+            
+            # Redirect based on role
+            if role == 'teacher':
+                return redirect(url_for('teacher'))
+            else:
+                return redirect(url_for('student_dashboard'))
         else:
-            return redirect(url_for('student_login'))
+            flash('Invalid username or password.', 'danger')
+            return render_template('login.html')
+    
+    # GET request - show login form
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET'])
+def register():
+    """Registration page - redirects to teacher or student registration"""
+    role = request.args.get('role', 'teacher')
+    if role == 'student':
+        return redirect(url_for('register_student'))
+    return redirect(url_for('register_teacher'))
+
+@app.route('/register/teacher', methods=['GET', 'POST'])
+def register_teacher():
+    """Teacher registration page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        full_name = request.form.get('full_name')
+        email = request.form.get('email')
+        
+        # Validate inputs
+        errors = []
+        if not all([username, password, confirm_password, full_name]):
+            errors.append('All fields except email are required.')
+        
+        if password != confirm_password:
+            errors.append('Passwords do not match.')
+        
+        if len(password) < 8:
+            errors.append('Password must be at least 8 characters long.')
+        
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            return render_template('register.html', role='teacher')
+        
+        # Create user
+        success = auth.create_user(username, password, full_name, email or '', 'teacher')
+        
+        if success:
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Username or email already exists.', 'danger')
+            return render_template('register.html', role='teacher')
+    
+    # GET request - show registration form
+    return render_template('register.html', role='teacher')
+
+@app.route('/register/student', methods=['GET', 'POST'])
+def register_student():
+    """Student registration page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        full_name = request.form.get('full_name')
+        email = request.form.get('email')
+        
+        # Validate inputs
+        errors = []
+        if not all([username, password, confirm_password, full_name]):
+            errors.append('All fields except email are required.')
+        
+        if password != confirm_password:
+            errors.append('Passwords do not match.')
+        
+        if len(password) < 8:
+            errors.append('Password must be at least 8 characters long.')
+        
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            return render_template('register.html', role='student')
+        
+        # Create user
+        success = auth.create_user(username, password, full_name, email or '', 'student')
+        
+        if success:
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Username or email already exists.', 'danger')
+            return render_template('register.html', role='student')
+    
+    # GET request - show registration form
+    return render_template('register.html', role='student')
 
 @app.route('/logout')
 def logout():
     """Logout user and clear session"""
+    username = session.get('full_name', 'User')
     session.clear()
-    flash('You have been logged out successfully.', 'success')
-    return redirect(url_for('index'))
+    flash(f'Goodbye, {username}! You have been logged out successfully.', 'success')
+    return redirect(url_for('login'))
+
+# ===== Student Answer Evaluation API =====
+@app.route('/api/student/submit_answer', methods=['POST'])
+@auth.student_required
+def submit_student_answer():
+    """Evaluate student answer and return score"""
+    try:
+        data = request.get_json()
+        question_id = data.get('question_id')
+        student_answer = data.get('student_answer', '').strip()
+        student_id = session.get('user_id')
+        
+        if not question_id or not student_answer:
+            return jsonify({'status': 'error', 'error': 'Question ID and answer are required'}), 400
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Fetch question details
+        cursor.execute('''
+            SELECT question_type FROM questions WHERE id = ?
+        ''', (question_id,))
+        
+        question_result = cursor.fetchone()
+        if not question_result:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Question not found'}), 404
+        
+        question_type = question_result[0]
+        
+        # Fetch correct answer/rubric
+        cursor.execute('''
+            SELECT correct_answer, max_marks FROM question_answers WHERE question_id = ?
+        ''', (question_id,))
+        
+        answer_data = cursor.fetchone()
+        if not answer_data:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No answer key available for this question'}), 404
+        
+        correct_answer = answer_data[0]
+        max_marks = float(answer_data[1])
+        
+        # Evaluate answer using the Evaluator class
+        evaluator = Evaluator()
+        score = evaluator.evaluate(question_type, student_answer, correct_answer)
+        
+        # Calculate percentage
+        percentage = (score / max_marks * 100) if max_marks > 0 else 0
+        
+        # Store submission
+        cursor.execute('''
+            INSERT INTO student_submissions 
+            (student_id, question_id, submitted_answer, score, max_marks)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (student_id, question_id, student_answer, score, max_marks))
+        
+        # Update question statistics
+        cursor.execute('''
+            UPDATE question_answers
+            SET total_attempts = total_attempts + 1,
+                avg_scored = (
+                    SELECT AVG(score) 
+                    FROM student_submissions 
+                    WHERE question_id = ?
+                ),
+                max_scored = (
+                    SELECT MAX(score)
+                    FROM student_submissions
+                    WHERE question_id = ?
+                ),
+                min_scored = (
+                    SELECT MIN(score)
+                    FROM student_submissions
+                    WHERE question_id = ?
+                )
+            WHERE question_id = ?
+        ''', (question_id, question_id, question_id, question_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'score': round(score, 2),
+            'max_marks': max_marks,
+            'percentage': round(percentage, 2),
+            'correct_answer': correct_answer,
+            'question_type': question_type
+        })
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/student/get_explanation/<int:question_id>', methods=['GET'])
+@auth.student_required
+def get_question_explanation(question_id):
+    """Get explanation for a question if it exists"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get question details
+        cursor.execute('''
+            SELECT subject, topic, subtopic, has_explanation
+            FROM questions WHERE id = ?
+        ''', (question_id,))
+        
+        question = cursor.fetchone()
+        conn.close()
+        
+        if not question:
+            return jsonify({'status': 'error', 'error': 'Question not found'}), 404
+        
+        subject, topic, subtopic, has_explanation = question
+        
+        if not has_explanation:
+            return jsonify({'status': 'success', 'has_explanation': False})
+        
+        # Read explanation file
+        folder_path = create_folder_structure(subject, topic, subtopic)
+        explanation_file = folder_path / f"{question_id}_explanation.md"
+        
+        if explanation_file.exists():
+            with open(explanation_file, 'r', encoding='utf-8') as f:
+                explanation_text = f.read()
+            
+            return jsonify({
+                'status': 'success',
+                'has_explanation': True,
+                'explanation': explanation_text
+            })
+        else:
+            return jsonify({'status': 'success', 'has_explanation': False})
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/teacher/manage_questions')
+@auth.teacher_required
+def manage_questions():
+    """Teacher page to browse and manage question bank"""
+    # Get unique values for filters
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    # Get subjects
+    cursor.execute('SELECT DISTINCT subject FROM questions ORDER BY subject')
+    subjects = [row[0] for row in cursor.fetchall()]
+    
+    # Get topics
+    cursor.execute('SELECT DISTINCT topic FROM questions ORDER BY topic')
+    topics = [row[0] for row in cursor.fetchall()]
+    
+    conn.close()
+    
+    return render_template('manage_questions.html',
+                         subjects=subjects,
+                         topics=topics,
+                         difficulty_levels=DIFFICULTY_LEVELS,
+                         bloom_levels=BLOOM_LEVELS,
+                         question_types=QUESTION_TYPES)
+
+@app.route('/api/questions/list', methods=['GET'])
+@auth.teacher_required
+def api_get_questions():
+    """API endpoint to get filtered list of questions"""
+    # Get filter parameters
+    subject = request.args.get('subject')
+    topic = request.args.get('topic')
+    difficulty = request.args.get('difficulty')
+    bloom_level = request.args.get('bloom_level')
+    question_type = request.args.get('question_type')
+    teacher_id = request.args.get('teacher_id')  # Optional: filter by teacher
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    # Build query
+    query = '''
+        SELECT id, title, question_type, subject, topic, difficulty_level, 
+               bloom_level, created_at, teacher_id, has_explanation, is_ai_generated
+        FROM questions
+        WHERE 1=1
+    '''
+    params = []
+    
+    if subject:
+        query += ' AND subject = ?'
+        params.append(subject)
+    
+    if topic:
+        query += ' AND topic = ?'
+        params.append(topic)
+    
+    if difficulty:
+        query += ' AND difficulty_level = ?'
+        params.append(difficulty)
+    
+    if bloom_level:
+        query += ' AND bloom_level = ?'
+        params.append(bloom_level)
+    
+    if question_type:
+        query += ' AND question_type = ?'
+        params.append(question_type)
+    
+    if teacher_id:
+        query += ' AND teacher_id = ?'
+        params.append(teacher_id)
+    
+    # Get total count
+    count_query = f'SELECT COUNT(*) FROM ({query})'
+    cursor.execute(count_query, params)
+    total_count = cursor.fetchone()[0]
+    
+    # Add pagination
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    params.extend([per_page, (page - 1) * per_page])
+    
+    cursor.execute(query, params)
+    questions = cursor.fetchall()
+    
+    conn.close()
+    
+    # Format results
+    results = []
+    for q in questions:
+        results.append({
+            'id': q[0],
+            'title': q[1],
+            'question_type': q[2],
+            'subject': q[3],
+            'topic': q[4],
+            'difficulty_level': q[5],
+            'bloom_level': q[6],
+            'created_at': q[7],
+            'teacher_id': q[8],
+            'has_explanation': bool(q[9]),
+            'is_ai_generated': bool(q[10])
+        })
+    
+    return jsonify({
+        'status': 'success',
+        'questions': results,
+        'total': total_count,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total_count + per_page - 1) // per_page
+    })
+
+@app.route('/api/questions/<int:question_id>/details', methods=['GET'])
+@auth.teacher_required
+def api_get_question_details(question_id):
+    """API endpoint to get full question details including answer, explanation, and stats"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    # Get question details
+    cursor.execute('''
+        SELECT id, title, question_type, subject, topic, subtopic, difficulty_level,
+               estimated_time, bloom_level, has_explanation, is_ai_generated, created_at
+        FROM questions
+        WHERE id = ?
+    ''', (question_id,))
+    
+    question = cursor.fetchone()
+    
+    if not question:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'Question not found'}), 404
+    
+    # Get answer/rubric if exists
+    cursor.execute('''
+        SELECT correct_answer, max_marks, avg_scored, total_attempts
+        FROM question_answers
+        WHERE question_id = ?
+    ''', (question_id,))
+    
+    answer_data = cursor.fetchone()
+    
+    conn.close()
+    
+    # Read question markdown file
+    subject, topic, subtopic = question[3], question[4], question[5]
+    folder_path = create_folder_structure(subject, topic, subtopic)
+    question_file = folder_path / f"{question_id}.md"
+    
+    question_text = ""
+    if question_file.exists():
+        with open(question_file, 'r', encoding='utf-8') as f:
+            question_text = f.read()
+    
+    # Read explanation if exists
+    explanation_text = ""
+    if question[9]:  # has_explanation
+        explanation_file = folder_path / f"{question_id}_explanation.md"
+        if explanation_file.exists():
+            with open(explanation_file, 'r', encoding='utf-8') as f:
+                explanation_text = f.read()
+    
+    # Build response
+    response = {
+        'status': 'success',
+        'question': {
+            'id': question[0],
+            'title': question[1],
+            'question_type': question[2],
+            'subject': question[3],
+            'topic': question[4],
+            'subtopic': question[5],
+            'difficulty_level': question[6],
+            'estimated_time': question[7],
+            'bloom_level': question[8],
+            'has_explanation': bool(question[9]),
+            'is_ai_generated': bool(question[10]),
+            'created_at': question[11],
+            'question_text': question_text,
+            'explanation_text': explanation_text
+        }
+    }
+    
+    # Add answer/stats if available
+    if answer_data:
+        response['answer'] = {
+            'correct_answer': answer_data[0],
+            'max_marks': answer_data[1],
+            'avg_scored': answer_data[2],
+            'total_attempts': answer_data[3]
+        }
+    
+    return jsonify(response)
+
+@app.route('/teacher/edit_explanation/<int:question_id>', methods=['GET', 'POST'])
+@auth.teacher_required
+def edit_explanation(question_id):
+    """Page to add or edit explanation for a question"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    # Get question details
+    cursor.execute('''
+        SELECT id, title, subject, topic, subtopic, has_explanation
+        FROM questions
+        WHERE id = ?
+    ''', (question_id,))
+    
+    question = cursor.fetchone()
+    
+    if not question:
+        conn.close()
+        flash('Question not found.', 'danger')
+        return redirect(url_for('manage_questions'))
+    
+    # Build folder path
+    subject, topic, subtopic = question[2], question[3], question[4]
+    folder_path = create_folder_structure(subject, topic, subtopic)
+    explanation_file = folder_path / f"{question_id}_explanation.md"
+    
+    if request.method == 'POST':
+        explanation_text = request.form.get('explanation_text', '')
+        
+        if explanation_text.strip():
+            # Save explanation
+            with open(explanation_file, 'w', encoding='utf-8') as f:
+                f.write(explanation_text)
+            
+            # Update has_explanation flag
+            cursor.execute('''
+                UPDATE questions
+                SET has_explanation = 1
+                WHERE id = ?
+            ''', (question_id,))
+            conn.commit()
+            
+            flash('Explanation saved successfully!', 'success')
+        else:
+            # Delete explanation if empty
+            if explanation_file.exists():
+                explanation_file.unlink()
+            
+            # Update has_explanation flag
+            cursor.execute('''
+                UPDATE questions
+                SET has_explanation = 0
+                WHERE id = ?
+            ''', (question_id,))
+            conn.commit()
+            
+            flash('Explanation removed.', 'info')
+        
+        conn.close()
+        return redirect(url_for('manage_questions'))
+    
+    # GET request - load existing explanation if any
+    explanation_text = ""
+    if question[5]:  # has_explanation
+        if explanation_file.exists():
+            with open(explanation_file, 'r', encoding='utf-8') as f:
+                explanation_text = f.read()
+    
+    conn.close()
+    
+    return render_template('edit_explanation.html',
+                         question_id=question[0],
+                         question_title=question[1],
+                         explanation_text=explanation_text)
+
 
 @app.route('/teacher-dashboard')
 @teacher_required
@@ -785,6 +1329,13 @@ def submit_question():
         bloom_level = request.form.get('bloom_level')
         generate_ai_questions = request.form.get('generate_ai_questions') == 'on'
         ai_notes = request.form.get('ai_notes', '')
+        
+        # Get explanation if provided
+        add_explanation = request.form.get('add_explanation') == 'on'
+        explanation_text = request.form.get('explanation_text', '')
+        
+        # Get teacher ID from session
+        teacher_id = session.get('user_id')
 
         # Validate required fields
         if not all([title, full_question_text, question_type, subject, topic,
@@ -794,16 +1345,16 @@ def submit_question():
                 'message': 'All required fields must be filled'
             }), 400
 
-        # Insert original question into database
+        # Insert original question into database with teacher_id and has_explanation
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
 
         cursor.execute('''
             INSERT INTO questions (title, question_type, subject, topic, subtopic, difficulty_level, estimated_time, bloom_level,
-                                 is_ai_generated, ai_generation_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 is_ai_generated, ai_generation_notes, teacher_id, has_explanation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (title, question_type, subject, topic, subtopic,
-              difficulty_level, int(estimated_time), bloom_level, False, None))
+              difficulty_level, int(estimated_time), bloom_level, False, None, teacher_id, add_explanation and bool(explanation_text.strip())))
 
         question_id = cursor.lastrowid
 
@@ -812,8 +1363,15 @@ def submit_question():
 
         # Save markdown file
         file_path = save_markdown_file(folder_path, question_id, full_question_text)
+        
+        # Save explanation if provided
+        if add_explanation and explanation_text.strip():
+            explanation_file_path = folder_path / f"{question_id}_explanation.md"
+            with open(explanation_file_path, 'w', encoding='utf-8') as f:
+                f.write(explanation_text)
 
         generated_questions = []
+
 
         # Generate AI questions if requested
         if generate_ai_questions:
