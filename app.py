@@ -283,7 +283,7 @@ def index():
     if 'user_id' in session:
         role = session.get('role')
         if role == 'teacher':
-            return redirect(url_for('teacher'))
+            return redirect(url_for('teacher_dashboard'))
         elif role == 'student':
             return redirect(url_for('student_dashboard'))
     return redirect(url_for('login'))
@@ -320,7 +320,7 @@ def login():
             
             # Redirect based on role
             if role == 'teacher':
-                return redirect(url_for('teacher'))
+                return redirect(url_for('teacher_dashboard'))
             else:
                 return redirect(url_for('student_dashboard'))
         else:

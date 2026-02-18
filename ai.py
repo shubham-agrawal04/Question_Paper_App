@@ -36,14 +36,14 @@ class QuestionGenerator:
         Returns:
             Formatted prompt string for the LLM
         """
-        prompt = f"""You are an expert question generator for educational assessments. Your task is to create a unique question that maintains the same difficulty level and educational objectives as the provided template.
+        prompt = f"""You are an expert question generator for college-level educational assessments. Your task is to create a unique question variant that maintains the same difficulty level and educational objectives as the provided template.
 
-## Original Question Template (Markdown):
+## Original Question Template:
 {question_markdown}
 
-## Question Metadata:
-- **Difficulty Level**: {difficulty}
-- **Bloom's Taxonomy Level**: {bloom_level}
+## Metadata:
+- **Difficulty**: {difficulty}
+- **Bloom's Level**: {bloom_level}
 - **Has Variable Parameters**: {'Yes' if has_parameters else 'No'}
 """
         
@@ -51,9 +51,9 @@ class QuestionGenerator:
             prompt += "\n## Parameter Specifications:\n"
             for param_name, param_details in parameters_info.items():
                 if 'min' in param_details and 'max' in param_details:
-                    prompt += f"- **{param_name}**: Range from {param_details['min']} to {param_details['max']}\n"
+                    prompt += f"- **{param_name}**: Range [{param_details['min']}, {param_details['max']}]\n"
                 elif 'values' in param_details:
-                    prompt += f"- **{param_name}**: Possible values: {param_details['values']}\n"
+                    prompt += f"- **{param_name}**: Options: {param_details['values']}\n"
                 elif 'type' in param_details:
                     prompt += f"- **{param_name}**: Type: {param_details['type']}\n"
         
@@ -61,16 +61,38 @@ class QuestionGenerator:
             prompt += f"\n## Additional Instructions:\n{additional_notes}\n"
         
         prompt += """
-## Task:
-Generate ONE unique question that:
-1. Maintains the same difficulty level and Bloom's taxonomy level
-2. Uses different specific values/contexts while preserving the core concept
-3. Follows all parameter constraints if applicable
-4. Adheres to any additional instructions provided
-5. Is clearly written and educationally sound
+## Few-Shot Examples:
 
-Provide only the generated question without explanations or metadata.
-"""
+### Example 1 (Algorithm Analysis):
+**Original:** "Analyze the time complexity of the following pseudocode using Big-O notation: for i=1 to n: for j=1 to n: for k=1 to j: print(i+j+k)"
+**Generated Variant:** "Determine the time complexity in Big-O notation for this algorithm: for x=1 to m: for y=1 to x: for z=1 to m: sum += x*y*z"
+
+### Example 2 (Probability):
+**Original:** "A bag contains 5 red balls and 3 blue balls. What is the probability of drawing 2 red balls without replacement?"
+**Generated Variant:** "An urn has 7 green marbles and 4 yellow marbles. Calculate the probability of selecting 2 green marbles consecutively without replacement."
+
+### Example 3 (Data Structures):
+**Original:** "Explain why a binary search tree with n nodes has average search time O(log n) but worst-case O(n)."
+**Generated Variant:** "Describe why AVL trees guarantee O(log n) search time in all cases, unlike standard binary search trees that can degrade to O(n)."
+
+### Example 4 (Discrete Math):
+**Original:** "Prove that for all integers n ≥ 1, the sum 1 + 2 + 3 + ... + n = n(n+1)/2 using mathematical induction."
+**Generated Variant:** "Use mathematical induction to prove that for all positive integers k, the sum of first k odd numbers equals k²."
+
+## Generation Rules:
+1. **Maintain Difficulty**: Keep the same cognitive load and complexity
+2. **Preserve Concept**: Change values/context but keep the core learning objective
+3. **Follow Constraints**: Respect all parameter specifications
+4. **Use LaTeX**: For mathematical expressions, use LaTeX notation (e.g., $O(n^2)$, $\\frac{n(n+1)}{2}$)
+5. **College-Level**: Assume undergraduate CS/Math/Engineering knowledge
+
+## CRITICAL OUTPUT REQUIREMENT:
+Return ONLY the generated question text in Markdown format with LaTeX for math.
+DO NOT include any preamble, explanations, metadata, or commentary.
+DO NOT say "Here is the generated question" or similar phrases.
+START IMMEDIATELY with the question content.
+
+Generated Question:"""
         return prompt
     
     def generate_question(self, 
@@ -170,17 +192,15 @@ Provide only the generated question without explanations or metadata.
         Returns:
             Generated answer/rubric for the variant question
         """
-        prompt = f"""You are an expert educational assessment developer. You have been given:
+        prompt = f"""You are an expert educational assessment developer specializing in creating answer keys and grading rubrics for college-level courses.
 
-1. An ORIGINAL question and its correct answer/rubric
-2. An AI-GENERATED VARIANT of that question
-
-Your task is to generate the corresponding correct answer/rubric for the AI-generated variant question.
+## TASK:
+Generate the correct answer/rubric for an AI-generated variant question by analyzing the relationship between the original question and its answer.
 
 ## ORIGINAL QUESTION:
 {original_question}
 
-## ORIGINAL CORRECT ANSWER/RUBRIC:
+## ORIGINAL ANSWER/RUBRIC:
 {original_answer}
 
 ## AI-GENERATED VARIANT QUESTION:
@@ -188,20 +208,72 @@ Your task is to generate the corresponding correct answer/rubric for the AI-gene
 
 ## QUESTION TYPE: {question_type}
 
-## INSTRUCTIONS:
-Based on the relationship between the original question and its answer, generate the correct answer/rubric for the AI-generated variant.
+## Few-Shot Examples:
 
-**IMPORTANT GUIDELINES:**
-- For MCQ: Provide only the option letter (A, B, C, D) that is correct in the variant
-- For True/False: Provide only "True" or "False"
-- For Fill-in-the-blank: Provide the exact word/phrase expected as the answer
-- For Numerical: Provide the numerical answer with any necessary steps
-- For Coding: Provide the expected code solution or algorithm steps
-- For Short Answer/Descriptive: Provide a detailed rubric with key points that should be present in a correct answer
+### Example 1 (Data Structures - Short Answer):
+**Original Q:** "Explain the difference between a stack and a queue in terms of data access patterns."
+**Original A:** "Stack follows LIFO (Last-In-First-Out) principle where the most recently added element is removed first. Queue follows FIFO (First-In-First-Out) where the oldest element is removed first. Example: Stack is like a stack of plates, Queue is like a waiting line."
 
-Maintain the same level of detail and grading criteria as the original answer/rubric.
-Provide ONLY the answer/rubric, without any explanations or preamble.
-"""
+**Variant Q:** "Compare and contrast the access patterns of heaps and priority queues."
+**Generated A:** "Heap is a tree-based data structure where parent nodes have specific ordering relationships with children (min-heap or max-heap). Priority queue is an abstract data type where elements are served based on priority, often implemented using heaps. Both allow prioritized access, but heaps provide O(log n) insertion/deletion while maintaining structural properties."
+
+### Example 2 (Algorithms - Coding):
+**Original Q:** "Write a Python function to implement binary search on a sorted array."
+**Original A:**
+```python
+def binary_search(arr, target):
+    left, right = 0, len(arr) - 1
+    while left <= right:
+        mid = (left + right) // 2
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+    return -1
+```
+
+**Variant Q:** "Implement linear search in Python for an unsorted list."
+**Generated A:**
+```python
+def linear_search(lst, target):
+    for i in range(len(lst)):
+        if lst[i] == target:
+            return i
+    return -1
+```
+
+### Example 3 (Probability - MCQ):
+**Original Q:** "What is P(A ∪ B) if P(A) = 0.3, P(B) = 0.4, P(A ∩ B) = 0.1? (A) 0.5 (B) 0.6 (C) 0.7 (D) 0.8"
+**Original A:** "B"
+
+**Variant Q:** "Calculate P(X ∪ Y) given P(X) = 0.25, P(Y) = 0.35, P(X ∩ Y) = 0.05? (A) 0.45 (B) 0.50 (C) 0.55 (D) 0.60"
+**Generated A:** "C"
+
+### Example 4 (Complexity Analysis - Descriptive):
+**Original Q:** "Analyze the time complexity of merge sort and explain why it's O(n log n)."
+**Original A:** "Merge sort divides array into halves recursively (log n levels) and merges them (O(n) per level). Total: O(n log n). Works by: 1) Divide array into two halves 2) Recursively sort each half 3) Merge sorted halves in O(n) time. Recurrence: T(n) = 2T(n/2) + O(n) → O(n log n) by Master Theorem."
+
+**Variant Q:** "Explain the time complexity of quicksort and why average case is O(n log n)."
+**Generated A:** "Quicksort partitions array around pivot (O(n) per level) across log n average levels. Total: O(n log n) average. Works by: 1) Choose pivot element 2) Partition array into elements < pivot and > pivot 3) Recursively sort partitions. Average case has balanced partitions giving log n depth. Worst case O(n²) occurs with poor pivot selection (e.g., sorted input)."
+
+## CRITICAL INSTRUCTIONS:
+
+1. **Match Structure**: Your answer MUST follow the same structure, format, and level of detail as the original answer
+2. **Preserve Style**: If original uses bullet points, use bullet points. If it has code blocks, include code blocks. If it's a single letter, respond with a single letter.
+3. **Maintain Complexity**: Keep the same depth of explanation and technical rigor
+4. **Question Type Guidelines**:
+   - **MCQ**: Return ONLY the option letter (A/B/C/D) that is correct
+   - **True/False**: Return ONLY "True" or "False"
+   - **Fill-in-the-blank**: Return ONLY the exact word/phrase expected
+   - **Coding**: Provide complete, working code with same structure as original
+   - **Short Answer**: Match paragraph structure and key points format
+   - **Descriptive**: Include same number of points/sections with equivalent detail
+
+5. **Output Format**: Return ONLY the answer/rubric content. NO preambles like "The answer is..." or "Here is the solution...". START IMMEDIATELY with the answer content.
+
+Generated Answer/Rubric:"""
         
         try:
             completion = self.client.chat.completions.create(
@@ -209,14 +281,14 @@ Provide ONLY the answer/rubric, without any explanations or preamble.
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a precise educational content generator. Output only the requested answer/rubric without any extra commentary."
+                        "content": "You are a precise educational content generator. Output only the requested answer/rubric matching the original's structure exactly. No commentary or explanations about the answer itself."
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                temperature=0.5,  # Lower temperature for consistency
+                temperature=0.3,  # Lower temperature for consistency
                 max_tokens=1000,
                 top_p=1,
                 stream=False,
