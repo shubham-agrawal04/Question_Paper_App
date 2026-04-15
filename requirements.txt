@@ -4,9 +4,11 @@ Werkzeug==2.3.7
 
 # Markdown Processing
 markdown==3.4.4
+latex2mathml>=3.81.0
 
 # PDF Generation
-WeasyPrint==59.0
+WeasyPrint>=62.0
+pydyf>=0.11.0
 cairocffi==1.6.1
 CairoSVG==2.7.1
 

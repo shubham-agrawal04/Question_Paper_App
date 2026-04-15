@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, Response, send_file
 import sqlite3
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
@@ -9,6 +10,7 @@ from teacher_backend import TeacherBackend
 from enhanced_paper_generation import EnhancedPaperGeneration
 from groq import Groq
 import markdown
+import latex2mathml.converter
 from weasyprint import HTML, CSS
 from io import BytesIO
 import auth  # Import authentication module
@@ -1250,11 +1252,37 @@ def view_generated_papers():
         flash(f'Error loading papers: {str(e)}', 'error')
         return redirect(url_for('teacher_dashboard'))
 
+def convert_latex_to_mathml(text):
+    """Pre-process LaTeX math expressions ($...$, $$...$$) into MathML for PDF rendering"""
+    def replace_display_math(match):
+        latex = match.group(1).strip()
+        try:
+            mathml = latex2mathml.converter.convert(latex)
+            return f'<div style="text-align:center;margin:10px 0;">{mathml}</div>'
+        except Exception:
+            return match.group(0)  # Return original if conversion fails
+    
+    def replace_inline_math(match):
+        latex = match.group(1).strip()
+        try:
+            return latex2mathml.converter.convert(latex)
+        except Exception:
+            return match.group(0)  # Return original if conversion fails
+
+    # Handle display math first: $$...$$
+    text = re.sub(r'\$\$(.*?)\$\$', replace_display_math, text, flags=re.DOTALL)
+    # Handle inline math: $...$
+    text = re.sub(r'(?<!\$)\$([^\$]+?)\$(?!\$)', replace_inline_math, text)
+    return text
+
 def convert_md_to_pdf(md_file_path: str, pdf_file_path: str):
-    """Convert markdown file to PDF using weasyprint"""
+    """Convert markdown file to PDF using weasyprint with LaTeX math support"""
     # Read markdown file
     with open(md_file_path, 'r', encoding='utf-8') as f:
         md_content = f.read()
+    
+    # Pre-process LaTeX math expressions into MathML
+    md_content = convert_latex_to_mathml(md_content)
     
     # Convert markdown to HTML
     html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
@@ -1322,6 +1350,10 @@ def convert_md_to_pdf(md_file_path: str, pdf_file_path: str):
             }}
             li {{
                 margin: 5px 0;
+            }}
+            /* Math styling */
+            math {{
+                font-family: 'Times New Roman', 'STIX Two Math', serif;
             }}
         </style>
     </head>
