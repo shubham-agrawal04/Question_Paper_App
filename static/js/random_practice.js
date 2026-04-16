@@ -215,6 +215,10 @@ function displayQuestion(question) {
         if (question.content && question.content.trim()) {
             try {
                 contentDiv.innerHTML = marked.parse(question.content);
+                // Render LaTeX with MathJax
+                if (window.MathJax) {
+                    MathJax.typesetPromise([contentDiv]).catch(err => console.error('MathJax error:', err));
+                }
             } catch (markdownError) {
                 console.error('Markdown parsing error:', markdownError);
                 contentDiv.innerHTML = `<pre>${question.content}</pre>`;

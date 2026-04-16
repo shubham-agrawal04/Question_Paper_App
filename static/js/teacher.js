@@ -107,6 +107,13 @@ document.addEventListener('DOMContentLoaded', function () {
             // Convert markdown to HTML using marked.js
             const htmlContent = marked.parse(markdownText);
             markdownPreview.innerHTML = htmlContent;
+
+            // Render LaTeX with MathJax
+            if (window.MathJax) {
+                MathJax.typesetPromise([markdownPreview]).catch((err) => {
+                    console.error('MathJax rendering error:', err);
+                });
+            }
         } catch (error) {
             markdownPreview.innerHTML = '<div class="alert alert-danger">Error rendering markdown: ' + error.message + '</div>';
         }
