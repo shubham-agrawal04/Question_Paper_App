@@ -8,6 +8,13 @@ let currentSelection = {
     subtopic: null
 };
 
+// Session tracking
+let practiceSession = {
+    active: false,
+    startTime: null,
+    attempts: []  // { questionId, title, score, maxMarks, percentage, subject, topic, difficulty, questionType }
+};
+
 document.addEventListener('DOMContentLoaded', function () {
     // Initialize the practice interface
     loadQuestionTree();
@@ -263,6 +270,17 @@ async function loadQuestionDetail(questionId) {
  * Render question detail view
  */
 function renderQuestionDetail(question) {
+    // Start session if not already started
+    if (!practiceSession.active) {
+        practiceSession.active = true;
+        practiceSession.startTime = new Date();
+        practiceSession.attempts = [];
+    }
+
+    // Show end practice button
+    const endPracticeNav = document.getElementById('end-practice-nav');
+    if (endPracticeNav) endPracticeNav.style.display = 'block';
+
     document.getElementById('question-title').textContent = question.title;
 
     // Update badges in header
@@ -270,8 +288,8 @@ function renderQuestionDetail(question) {
     document.getElementById('difficulty-badge').textContent = question.difficulty_level;
 
     // Update metadata fields
-    document.getElementById('question-subject').textContent = currentSelection.subject || 'N/A';
-    document.getElementById('question-topic').textContent = currentSelection.topic || 'N/A';
+    document.getElementById('question-subject').textContent = currentSelection.subject || question.subject || 'N/A';
+    document.getElementById('question-topic').textContent = currentSelection.topic || question.topic || 'N/A';
     document.getElementById('question-time-detail').textContent = question.estimated_time;
     document.getElementById('question-bloom-detail').textContent = question.bloom_level;
 
@@ -337,6 +355,25 @@ function setupAnswerButtons(questionId) {
             const result = await response.json();
 
             if (result.status === 'success') {
+                // Track this attempt in session
+                const titleEl = document.getElementById('question-title');
+                const subjectEl = document.getElementById('question-subject');
+                const topicEl = document.getElementById('question-topic');
+                const diffBadge = document.getElementById('difficulty-badge');
+                const typeBadge = document.getElementById('question-type-badge');
+
+                practiceSession.attempts.push({
+                    questionId: questionId,
+                    title: titleEl ? titleEl.textContent : 'Unknown',
+                    score: result.score,
+                    maxMarks: result.max_marks,
+                    percentage: result.percentage,
+                    subject: subjectEl ? subjectEl.textContent : 'Unknown',
+                    topic: topicEl ? topicEl.textContent : 'Unknown',
+                    difficulty: diffBadge ? diffBadge.textContent : 'Unknown',
+                    questionType: typeBadge ? typeBadge.textContent : 'Unknown'
+                });
+
                 // Show score modal
                 showScoreModal(result, answer, questionId);
             } else {
@@ -521,6 +558,129 @@ function showError(message) {
     // You could implement a toast notification or modal here
     console.error(message);
     alert(message); // Simple fallback
+}
+
+/**
+ * End Practice Session - compute and display stats
+ */
+function endPracticeSession() {
+    const attempts = practiceSession.attempts;
+    const now = new Date();
+    const sessionStart = practiceSession.startTime || now;
+    const durationMs = now - sessionStart;
+    const durationMin = Math.floor(durationMs / 60000);
+    const durationSec = Math.floor((durationMs % 60000) / 1000);
+
+    // Session duration
+    document.getElementById('session-duration').textContent = `${durationMin}m ${durationSec}s`;
+
+    if (attempts.length === 0) {
+        // No attempts - show minimal stats
+        document.getElementById('stat-total-attempted').textContent = '0';
+        document.getElementById('stat-correct').textContent = '0';
+        document.getElementById('stat-partial').textContent = '0';
+        document.getElementById('stat-incorrect').textContent = '0';
+        document.getElementById('stat-accuracy').textContent = '0%';
+        document.getElementById('accuracy-bar').style.width = '0%';
+        document.getElementById('stat-total-score').textContent = '0 / 0';
+        document.getElementById('stat-best-score').textContent = '\u2014';
+        document.getElementById('stat-worst-score').textContent = '\u2014';
+        document.getElementById('stat-topics-breakdown').innerHTML = '<p class="text-muted mb-0">No topics practiced yet.</p>';
+        document.getElementById('stat-difficulty-breakdown').innerHTML = '<p class="text-muted mb-0">No data available.</p>';
+    } else {
+        // Compute stats
+        const totalAttempted = attempts.length;
+        const correct = attempts.filter(a => a.percentage >= 80).length;
+        const partial = attempts.filter(a => a.percentage >= 40 && a.percentage < 80).length;
+        const incorrect = attempts.filter(a => a.percentage < 40).length;
+
+        const totalScore = attempts.reduce((sum, a) => sum + a.score, 0);
+        const totalMaxMarks = attempts.reduce((sum, a) => sum + a.maxMarks, 0);
+        const overallAccuracy = totalMaxMarks > 0 ? (totalScore / totalMaxMarks * 100) : 0;
+
+        const bestAttempt = attempts.reduce((best, a) => a.percentage > best.percentage ? a : best, attempts[0]);
+        const worstAttempt = attempts.reduce((worst, a) => a.percentage < worst.percentage ? a : worst, attempts[0]);
+
+        document.getElementById('stat-total-attempted').textContent = totalAttempted;
+        document.getElementById('stat-correct').textContent = correct;
+        document.getElementById('stat-partial').textContent = partial;
+        document.getElementById('stat-incorrect').textContent = incorrect;
+        document.getElementById('stat-accuracy').textContent = overallAccuracy.toFixed(1) + '%';
+        document.getElementById('accuracy-bar').style.width = overallAccuracy.toFixed(1) + '%';
+        document.getElementById('stat-total-score').textContent = `${totalScore.toFixed(1)} / ${totalMaxMarks.toFixed(1)}`;
+        document.getElementById('stat-best-score').textContent = `${bestAttempt.percentage.toFixed(0)}% (${bestAttempt.title.substring(0, 30)}${bestAttempt.title.length > 30 ? '...' : ''})`;
+        document.getElementById('stat-worst-score').textContent = `${worstAttempt.percentage.toFixed(0)}% (${worstAttempt.title.substring(0, 30)}${worstAttempt.title.length > 30 ? '...' : ''})`;
+
+        // Topic breakdown
+        const topicMap = {};
+        attempts.forEach(a => {
+            const key = `${a.subject} > ${a.topic}`;
+            if (!topicMap[key]) {
+                topicMap[key] = { count: 0, totalScore: 0, totalMax: 0 };
+            }
+            topicMap[key].count++;
+            topicMap[key].totalScore += a.score;
+            topicMap[key].totalMax += a.maxMarks;
+        });
+
+        let topicsHtml = '';
+        for (const [topic, stats] of Object.entries(topicMap)) {
+            const topicAccuracy = stats.totalMax > 0 ? (stats.totalScore / stats.totalMax * 100) : 0;
+            const barColor = topicAccuracy >= 80 ? '#3fb950' : topicAccuracy >= 40 ? '#d29922' : '#f85149';
+            topicsHtml += `
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>${topic}</small>
+                        <small>${stats.count} Q &bull; ${topicAccuracy.toFixed(0)}%</small>
+                    </div>
+                    <div class="progress" style="height: 6px; background: #30363d;">
+                        <div class="progress-bar" style="width: ${topicAccuracy}%; background: ${barColor};"></div>
+                    </div>
+                </div>
+            `;
+        }
+        document.getElementById('stat-topics-breakdown').innerHTML = topicsHtml || '<p class="text-muted mb-0">No topics practiced yet.</p>';
+
+        // Difficulty breakdown
+        const diffMap = {};
+        attempts.forEach(a => {
+            const key = a.difficulty || 'Unknown';
+            if (!diffMap[key]) {
+                diffMap[key] = { count: 0, totalScore: 0, totalMax: 0 };
+            }
+            diffMap[key].count++;
+            diffMap[key].totalScore += a.score;
+            diffMap[key].totalMax += a.maxMarks;
+        });
+
+        let diffHtml = '';
+        const diffColors = { 'Easy': '#3fb950', 'Medium': '#d29922', 'Hard': '#f85149' };
+        for (const [diff, stats] of Object.entries(diffMap)) {
+            const diffAccuracy = stats.totalMax > 0 ? (stats.totalScore / stats.totalMax * 100) : 0;
+            const color = diffColors[diff] || '#58a6ff';
+            diffHtml += `
+                <div class="d-inline-block me-3 mb-2">
+                    <span class="badge" style="background: ${color}; font-size: 0.85em;">
+                        ${diff}: ${stats.count} Q &bull; ${diffAccuracy.toFixed(0)}%
+                    </span>
+                </div>
+            `;
+        }
+        document.getElementById('stat-difficulty-breakdown').innerHTML = diffHtml || '<p class="text-muted mb-0">No data available.</p>';
+    }
+
+    // Show the modal
+    const sessionModal = new bootstrap.Modal(document.getElementById('sessionSummaryModal'));
+    sessionModal.show();
+
+    // Reset session
+    practiceSession.active = false;
+    practiceSession.startTime = null;
+    practiceSession.attempts = [];
+
+    // Hide the end practice button
+    const endPracticeNav = document.getElementById('end-practice-nav');
+    if (endPracticeNav) endPracticeNav.style.display = 'none';
 }
 
 // Add CSS for tree nodes and question cards

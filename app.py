@@ -367,7 +367,7 @@ def register_teacher():
             return render_template('register.html', role='teacher')
         
         # Create user
-        success = auth.create_user(username, password, full_name, email or '', 'teacher')
+        success = auth.create_user(username, password, full_name, email, 'teacher')
         
         if success:
             flash('Registration successful! Please log in.', 'success')
@@ -406,7 +406,7 @@ def register_student():
             return render_template('register.html', role='student')
         
         # Create user
-        success = auth.create_user(username, password, full_name, email or '', 'student')
+        success = auth.create_user(username, password, full_name, email, 'student')
         
         if success:
             flash('Registration successful! Please log in.', 'success')

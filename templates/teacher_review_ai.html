@@ -17,6 +17,11 @@
             border-left: 4px solid #6f42c1;
             transition: all 0.3s;
             margin-bottom: 1rem;
+            color: #e6edf3;
+        }
+
+        .question-card .text-muted {
+            color: #8b949e !important;
         }
 
         .question-card:hover {
@@ -43,17 +48,19 @@
         .expandable-section {
             cursor: pointer;
             user-select: none;
+            color: #e6edf3;
         }
 
         .expandable-section:hover {
-            background-color: #f8f9fa;
+            background-color: #30363d;
         }
 
         .section-content {
             display: none;
             padding: 1rem;
-            background-color: #f8f9fa;
-            border-top: 1px solid #dee2e6;
+            background-color: #161b22;
+            border-top: 1px solid #30363d;
+            color: #e6edf3;
         }
 
         .section-content.show {
@@ -412,14 +419,14 @@
 
                         if (section === 'question') {
                             const questionHtml = marked.parse(data.question.question_text);
-                            content.innerHTML = `<div class="border rounded p-3 bg-white">${questionHtml}</div>`;
+                            content.innerHTML = `<div class="border rounded p-3" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${questionHtml}</div>`;
                         } else if (section === 'answer') {
                             if (data.answer) {
                                 const answerHtml = marked.parse(data.answer.correct_answer);
                                 content.innerHTML = `
                                     <div class="mb-3">
                                         <strong>Correct Answer:</strong>
-                                        <div class="border rounded p-3 mt-2 bg-white">${answerHtml}</div>
+                                        <div class="border rounded p-3 mt-2" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${answerHtml}</div>
                                     </div>
                                     <div>
                                         <strong>Max Marks:</strong> ${data.answer.max_marks}
@@ -431,7 +438,7 @@
                         } else if (section === 'explanation') {
                             if (data.question.explanation_text) {
                                 const explanationHtml = marked.parse(data.question.explanation_text);
-                                content.innerHTML = `<div class="border rounded p-3 bg-white">${explanationHtml}</div>`;
+                                content.innerHTML = `<div class="border rounded p-3" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${explanationHtml}</div>`;
                             } else {
                                 content.innerHTML = '<p class="text-muted">No explanation available.</p>';
                             }

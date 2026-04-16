@@ -183,6 +183,111 @@
         </div>
     </div>
 
+    <!-- Session Summary Modal -->
+    <div class="modal fade" id="sessionSummaryModal" tabindex="-1" aria-labelledby="sessionSummaryLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content" style="background: #161b22; border: 1px solid #30363d;">
+                <div class="modal-header" style="border-bottom: 1px solid #30363d;">
+                    <h5 class="modal-title" id="sessionSummaryLabel" style="color: #e6edf3;">
+                        <i class="bi bi-trophy-fill text-warning me-2"></i>Practice Session Summary
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="color: #e6edf3;">
+                    <!-- Session Duration -->
+                    <div class="text-center mb-4">
+                        <div class="d-inline-block px-4 py-2 rounded-pill" style="background: linear-gradient(135deg, #238636 0%, #2ea043 100%);">
+                            <i class="bi bi-clock-fill me-2"></i>
+                            <span id="session-duration" class="fw-bold">0m 0s</span> session
+                        </div>
+                    </div>
+
+                    <!-- Main Stats Grid -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3 col-6">
+                            <div class="text-center p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                                <div class="display-6 fw-bold" style="color: #58a6ff;" id="stat-total-attempted">0</div>
+                                <small class="text-muted">Questions Attempted</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-center p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                                <div class="display-6 fw-bold" style="color: #3fb950;" id="stat-correct">0</div>
+                                <small class="text-muted">Correct (≥80%)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-center p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                                <div class="display-6 fw-bold" style="color: #d29922;" id="stat-partial">0</div>
+                                <small class="text-muted">Partial (40-79%)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="text-center p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                                <div class="display-6 fw-bold" style="color: #f85149;" id="stat-incorrect">0</div>
+                                <small class="text-muted">Needs Work (<40%)</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accuracy Bar -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="fw-bold">Overall Accuracy</span>
+                            <span class="fw-bold" id="stat-accuracy">0%</span>
+                        </div>
+                        <div class="progress" style="height: 12px; background: #21262d;">
+                            <div class="progress-bar" role="progressbar" id="accuracy-bar" style="width: 0%; background: linear-gradient(90deg, #3fb950, #58a6ff);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Score Summary -->
+                    <div class="mb-4 p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                        <h6 class="mb-3"><i class="bi bi-bar-chart-fill me-2" style="color: #a5a5f5;"></i>Score Summary</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <small class="text-muted">Total Score</small>
+                                <div class="fw-bold" style="color: #58a6ff;" id="stat-total-score">0 / 0</div>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Best Score</small>
+                                <div class="fw-bold" style="color: #3fb950;" id="stat-best-score">—</div>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="text-muted">Lowest Score</small>
+                                <div class="fw-bold" style="color: #f85149;" id="stat-worst-score">—</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Topic Breakdown -->
+                    <div class="mb-3 p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                        <h6 class="mb-3"><i class="bi bi-bookmarks-fill me-2" style="color: #d2a8ff;"></i>Topics Covered</h6>
+                        <div id="stat-topics-breakdown">
+                            <p class="text-muted mb-0">No topics practiced yet.</p>
+                        </div>
+                    </div>
+
+                    <!-- Difficulty Breakdown -->
+                    <div class="p-3 rounded" style="background: #21262d; border: 1px solid #30363d;">
+                        <h6 class="mb-3"><i class="bi bi-speedometer2 me-2" style="color: #79c0ff;"></i>Difficulty Breakdown</h6>
+                        <div id="stat-difficulty-breakdown">
+                            <p class="text-muted mb-0">No data available.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid #30363d;">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>Close
+                    </button>
+                    <a href="{{ url_for('student_dashboard') }}" class="btn btn-primary">
+                        <i class="bi bi-house me-1"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>

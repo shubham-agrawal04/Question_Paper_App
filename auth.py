@@ -110,10 +110,14 @@ def create_user(username: str, password: str, full_name: str, email: str, role: 
         table = 'teachers' if role == 'teacher' else 'students'
         user_id = f"{role[0]}{username[:3]}{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
+        # Store NULL instead of empty string for email to avoid UNIQUE constraint
+        # conflicts (SQLite treats '' as identical but NULLs are always distinct)
+        email_value = email.strip() if email and email.strip() else None
+        
         cursor.execute(f'''
             INSERT INTO {table} (id, username, password_hash, full_name, email, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, username, hash_password(password), full_name, email, datetime.now()))
+        ''', (user_id, username, hash_password(password), full_name, email_value, datetime.now()))
         
         conn.commit()
         conn.close()
