@@ -155,6 +155,7 @@ def init_database():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_id INTEGER NOT NULL,
                 correct_answer TEXT NOT NULL,
+                rubric TEXT,
                 max_marks REAL DEFAULT 1.0,
                 min_marks REAL DEFAULT 0.0,
                 max_scored REAL DEFAULT 0.0,
@@ -165,6 +166,13 @@ def init_database():
                 FOREIGN KEY (question_id) REFERENCES questions (id) ON DELETE CASCADE
             )
         ''')
+        
+        # Check if rubric column exists in question_answers
+        cursor.execute("PRAGMA table_info(question_answers)")
+        qa_columns = [row[1] for row in cursor.fetchall()]
+        if 'rubric' not in qa_columns:
+            print("[INFO] Adding rubric column to question_answers...")
+            cursor.execute('ALTER TABLE question_answers ADD COLUMN rubric TEXT')
         
         # Create question_feedback table
         print("[INFO] Creating question_feedback table...")
@@ -702,7 +710,7 @@ def api_get_question_details(question_id):
     
     # Get answer/rubric if exists
     cursor.execute('''
-        SELECT correct_answer, max_marks, avg_scored, total_attempts
+        SELECT correct_answer, rubric, max_marks, avg_scored, total_attempts
         FROM question_answers
         WHERE question_id = ?
     ''', (question_id,))
@@ -754,9 +762,10 @@ def api_get_question_details(question_id):
     if answer_data:
         response['answer'] = {
             'correct_answer': answer_data[0],
-            'max_marks': answer_data[1],
-            'avg_scored': answer_data[2],
-            'total_attempts': answer_data[3]
+            'rubric': answer_data[1],
+            'max_marks': answer_data[2],
+            'avg_scored': answer_data[3],
+            'total_attempts': answer_data[4]
         }
     
     return jsonify(response)
@@ -1088,8 +1097,6 @@ def save_question_config():
         
         all_questions = [question_row]
     
-    conn.close()
-    
     # Add question to all paper files
     paper_folder = Path(session.get('paper_folder', 'Generated Papers'))
     num_papers = int(session.get('num_papers', 1))
@@ -1146,18 +1153,32 @@ def save_question_config():
                 print(f"  Tried: {question_file_path_alt}")
                 question_content = f"[Question content not found for ID: {variant_question_id}]\n\nExpected locations:\n- {question_file_path}\n- {question_file_path_alt}"
             
+            # Extract Answer component for key Generation
+            cursor.execute("SELECT correct_answer, rubric FROM question_answers WHERE question_id = ?", (variant_question_id,))
+            answer_rec = cursor.fetchone()
+            correct_answer = answer_rec[0] if answer_rec and answer_rec[0] else ""
+            rubric = answer_rec[1] if answer_rec and answer_rec[1] else ""
+            
+            key_block = f"## Question {current_question}\n\n{question_content}\n"
+            if correct_answer:
+                key_block += f"\n**Formal Answer:**\n{correct_answer}\n"
+            if rubric:
+                key_block += f"\n**Grading Rubric:**\n{rubric}\n"
+            key_block += "\n---\n\n"
+            
             # Append only the question content to the paper
-            question_block = f"""## Question {current_question}
-
-{question_content}
-
----
-
-"""
+            question_block = f"## Question {current_question}\n\n{question_content}\n\n---\n\n"
             
             with open(paper_file, 'a', encoding='utf-8') as f:
                 f.write(question_block)
+                
+            key_file = paper_folder / f"paper_{i}_key.md"
+            with open(key_file, 'a', encoding='utf-8') as f:
+                if current_question == 1 and not key_file.exists():
+                    f.write(f"# Paper {i} - Answer Key\n\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n---\n\n")
+                f.write(key_block)
     
+    conn.close()
     # Move to next question
     session['current_question'] = current_question + 1
     
@@ -1171,6 +1192,8 @@ def save_question_config():
         for i in range(1, num_papers + 1):
             md_file = paper_folder / f"paper_{i}.md"
             pdf_file = paper_folder / f"paper_{i}.pdf"
+            key_md_file = paper_folder / f"paper_{i}_key.md"
+            key_pdf_file = paper_folder / f"paper_{i}_key.pdf"
             
             if md_file.exists():
                 try:
@@ -1185,6 +1208,18 @@ def save_question_config():
                     print(f"Generated PDF: {pdf_file}")
                 except Exception as e:
                     print(f"Error generating PDF for paper {i}: {e}")
+                    
+            if key_md_file.exists():
+                try:
+                    convert_md_to_pdf(str(key_md_file), str(key_pdf_file))
+                    pdf_files.append(str(key_pdf_file))
+                    pdf_urls.append({
+                        'name': f"paper_{i}_key.pdf",
+                        'url': url_for('download_pdf', folder=paper_folder.name, filename=f"paper_{i}_key.pdf")
+                    })
+                    print(f"Generated Answer Key PDF: {key_pdf_file}")
+                except Exception as e:
+                    print(f"Error generating Key PDF for paper {i}: {e}")
         
         return jsonify({
             'status': 'success',
@@ -1444,7 +1479,6 @@ def submit_question():
                 # Get original answer if it exists (to pass to AI for variant answer generation)
                 original_answer = request.form.get('correct_answer')
                 original_rubric = request.form.get('answer_rubric')
-                original_answer_text = original_answer if original_answer and original_answer.strip() else (original_rubric if original_rubric and original_rubric.strip() else None)
 
                 # Save each AI-generated question
                 for i, ai_question in enumerate(ai_questions):
@@ -1462,26 +1496,47 @@ def submit_question():
                     ai_file_path = save_markdown_file(folder_path, ai_question_id, ai_question)
 
                     # Generate answer for this AI variant if original has an answer
-                    if original_answer_text:
+                    if original_answer or original_rubric:
                         try:
-                            variant_answer = generator.generate_answer_for_variant(
+                            variant_response_str = generator.generate_answer_for_variant(
                                 original_question=full_question_text,
-                                original_answer=original_answer_text,
+                                original_answer=original_answer,
+                                original_rubric=original_rubric,
                                 ai_generated_question=ai_question,
                                 question_type=question_type
                             )
                             
-                            # Save the generated answer for the AI variant
-                            if variant_answer and not variant_answer.startswith("Error"):
+                            variant_answer = ""
+                            variant_rubric = ""
+                            
+                            if variant_response_str and not variant_response_str.startswith("Error"):
+                                try:
+                                    import json
+                                    cleaned_response = variant_response_str.strip()
+                                    if cleaned_response.startswith('```json'):
+                                        cleaned_response = cleaned_response[7:]
+                                    elif cleaned_response.startswith('```'):
+                                        cleaned_response = cleaned_response[3:]
+                                    if cleaned_response.endswith('```'):
+                                        cleaned_response = cleaned_response[:-3]
+                                    
+                                    parsed = json.loads(cleaned_response)
+                                    variant_answer = parsed.get("answer", "")
+                                    variant_rubric = parsed.get("rubric", "")
+                                except Exception as e:
+                                    # Fallback if json parsing fails
+                                    print(f"JSON Parsing failed: {e}. Falling back to strings.")
+                                    variant_answer = variant_response_str
+                                
                                 try:
                                     max_marks_val = float(request.form.get('max_marks', 1.0))
                                 except ValueError:
                                     max_marks_val = 1.0
                                     
                                 cursor.execute('''
-                                    INSERT INTO question_answers (question_id, correct_answer, max_marks)
-                                    VALUES (?, ?, ?)
-                                ''', (ai_question_id, variant_answer, max_marks_val))
+                                    INSERT INTO question_answers (question_id, correct_answer, rubric, max_marks)
+                                    VALUES (?, ?, ?, ?)
+                                ''', (ai_question_id, variant_answer, variant_rubric, max_marks_val))
                                 
                         except Exception as ans_error:
                             print(f"Answer generation error for variant {i+1}: {ans_error}")
@@ -1497,28 +1552,23 @@ def submit_question():
                 print(f"AI generation error: {ai_error}")
 
         # Save correct answer or rubric if provided
-        # Save correct answer or rubric if provided
         correct_answer = request.form.get('correct_answer')
         answer_rubric = request.form.get('answer_rubric')
         max_marks = request.form.get('max_marks')
         
-        # Determine which field to use based on what's provided
-        final_answer = None
-        if correct_answer and correct_answer.strip():
-            final_answer = correct_answer.strip()
-        elif answer_rubric and answer_rubric.strip():
-            final_answer = answer_rubric.strip()
+        final_answer = correct_answer.strip() if correct_answer else ""
+        final_rubric = answer_rubric.strip() if answer_rubric else ""
             
-        if final_answer:
+        if final_answer or final_rubric:
             try:
                 max_marks_val = float(max_marks) if max_marks else 1.0
             except ValueError:
                 max_marks_val = 1.0
 
             cursor.execute('''
-                INSERT INTO question_answers (question_id, correct_answer, max_marks)
-                VALUES (?, ?, ?)
-            ''', (question_id, final_answer, max_marks_val))
+                INSERT INTO question_answers (question_id, correct_answer, rubric, max_marks)
+                VALUES (?, ?, ?, ?)
+            ''', (question_id, final_answer, final_rubric, max_marks_val))
 
         conn.commit()
         conn.close()
@@ -2114,6 +2164,8 @@ def auto_paper_generate():
 
             # Build paper markdown
             md_content = f"# Paper {paper_idx}\n\n"
+            md_key_content = f"# Paper {paper_idx} - Answer Key\n\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            
             for q_num, q in enumerate(paper_questions, 1):
                 # Read the question markdown file
                 subject = q['subject']
@@ -2147,19 +2199,39 @@ def auto_paper_generate():
                     question_content = f"[Question content not found for ID: {q_id}]"
 
                 md_content += f"## Question {q_num}\n\n{question_content}\n\n---\n\n"
+                
+                # Fetch answers for the key
+                cursor = conn.cursor()
+                cursor.execute("SELECT correct_answer, rubric FROM question_answers WHERE question_id = ?", (q_id,))
+                ans_rec = cursor.fetchone()
+                correct_ans = ans_rec[0] if ans_rec and ans_rec[0] else ""
+                rubric = ans_rec[1] if ans_rec and ans_rec[1] else ""
+                
+                md_key_content += f"## Question {q_num}\n\n{question_content}\n"
+                if correct_ans:
+                    md_key_content += f"\n**Formal Answer:**\n{correct_ans}\n"
+                if rubric:
+                    md_key_content += f"\n**Grading Rubric:**\n{rubric}\n"
+                md_key_content += "\n---\n\n"
 
-            # Write MD file
+            # Write MD files
             md_file_path = paper_folder / f"paper_{paper_idx}.md"
             with open(md_file_path, 'w', encoding='utf-8') as f:
                 f.write(md_content)
+                
+            md_key_file_path = paper_folder / f"paper_{paper_idx}_key.md"
+            with open(md_key_file_path, 'w', encoding='utf-8') as f:
+                f.write(md_key_content)
 
             md_urls.append({
                 'name': f"paper_{paper_idx}.md",
                 'url': url_for('download_pdf', folder=paper_folder.name, filename=f"paper_{paper_idx}.md")
             })
 
-            # Generate PDF
+            # Generate PDFs
             pdf_file_path = paper_folder / f"paper_{paper_idx}.pdf"
+            key_pdf_file_path = paper_folder / f"paper_{paper_idx}_key.pdf"
+            
             try:
                 convert_md_to_pdf(str(md_file_path), str(pdf_file_path))
                 pdf_urls.append({
@@ -2168,6 +2240,17 @@ def auto_paper_generate():
                 })
                 print(f"[AUTO-PAPER] Generated PDF: {pdf_file_path}")
             except Exception as pdf_err:
+                print(f"[AUTO-PAPER] PDF generation failed for paper {paper_idx}: {pdf_err}")
+                
+            try:
+                convert_md_to_pdf(str(md_key_file_path), str(key_pdf_file_path))
+                pdf_urls.append({
+                    'name': f"paper_{paper_idx}_key.pdf",
+                    'url': url_for('download_pdf', folder=paper_folder.name, filename=f"paper_{paper_idx}_key.pdf")
+                })
+                print(f"[AUTO-PAPER] Generated Answer Key PDF: {key_pdf_file_path}")
+            except Exception as pdf_err:
+                print(f"[AUTO-PAPER] Answer Key PDF generation failed for paper {paper_idx}: {pdf_err}")
                 print(f"[AUTO-PAPER] PDF generation failed for paper {paper_idx}: {pdf_err}")
 
         conn.close()

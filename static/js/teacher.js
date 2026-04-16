@@ -328,13 +328,15 @@ document.addEventListener('DOMContentLoaded', function () {
 function toggleCorrectAnswerField() {
     const questionType = document.getElementById('question_type').value;
     const correctAnswerSection = document.getElementById('correct_answer_section');
+    const rubricSection = document.getElementById('rubric_section');
     const correctAnswerInput = document.getElementById('correct_answer');
     const answerRubric = document.getElementById('answer_rubric');
     const answerLabel = document.getElementById('answer_label');
-    const smallText = document.getElementById('answer_help_text');
+    const answerSmallText = document.getElementById('answer_help_text');
 
     if (!questionType) {
         correctAnswerSection.style.display = 'none';
+        rubricSection.style.display = 'none';
         correctAnswerInput.required = false;
         answerRubric.required = false;
         return;
@@ -342,12 +344,11 @@ function toggleCorrectAnswerField() {
 
     correctAnswerSection.style.display = 'block';
     correctAnswerSection.style.animation = 'fadeIn 0.3s ease-in';
+    correctAnswerInput.required = true;
 
     // Simple types: MCQ, True/False, Fill-in-the-blank
     if (['MCQ', 'True/False', 'Fill-in-the-blank'].includes(questionType)) {
-        correctAnswerInput.style.display = 'block';
-        answerRubric.style.display = 'none';
-        correctAnswerInput.required = true;
+        rubricSection.style.display = 'none';
         answerRubric.required = false;
         answerRubric.value = ''; // Clear rubric
 
@@ -355,30 +356,30 @@ function toggleCorrectAnswerField() {
 
         if (questionType === 'MCQ') {
             correctAnswerInput.placeholder = "e.g., A, B, C, or D";
-            smallText.textContent = "Enter the option label (A, B, C, D) corresponding to the correct answer.";
+            answerSmallText.textContent = "Enter the option label (A, B, C, D) corresponding to the correct answer.";
         } else if (questionType === 'True/False') {
             correctAnswerInput.placeholder = "e.g., True or False";
-            smallText.textContent = "Enter 'True' or 'False'.";
+            answerSmallText.textContent = "Enter 'True' or 'False'.";
         } else {
             correctAnswerInput.placeholder = "e.g., Photosynthesis";
-            smallText.textContent = "Enter the exact word or phrase expected as the answer.";
+            answerSmallText.textContent = "Enter the exact word or phrase expected as the answer.";
         }
     }
     // Complex types: Numerical, Coding, Short Answer, Descriptive
     else {
-        correctAnswerInput.style.display = 'none';
-        answerRubric.style.display = 'block';
-        correctAnswerInput.required = false;
+        rubricSection.style.display = 'block';
+        rubricSection.style.animation = 'fadeIn 0.3s ease-in';
         answerRubric.required = true;
-        correctAnswerInput.value = ''; // Clear simple input
 
-        answerLabel.textContent = "Answer / Grading Rubric";
-        smallText.textContent = "Provide the correct solution, code snippet, or key points for evaluation.";
+        answerLabel.textContent = "Formal Answer";
+        
+        correctAnswerInput.placeholder = "Enter the formal correct answer...";
+        answerSmallText.textContent = "The formal valid answer to present.";
 
         if (questionType === 'Coding') {
             answerRubric.placeholder = "Enter the expected code solution or algorithm steps...";
         } else if (questionType === 'Numerical') {
-            answerRubric.placeholder = "Enter the result with steps if necessary (e.g., 42, or x=5, y=10)...";
+            answerRubric.placeholder = "Enter the evaluation steps... (e.g. 1 mark for formula...)";
         } else {
             answerRubric.placeholder = "Enter the detailed answer key or evaluation rubric...";
         }

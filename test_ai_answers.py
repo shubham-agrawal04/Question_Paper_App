@@ -21,7 +21,7 @@ class TestAIAnswerGeneration(unittest.TestCase):
         mock_client = MagicMock()
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "B"
+        mock_completion.choices[0].message.content = '{"answer": "B", "rubric": ""}'
         
         mock_client.chat.completions.create.return_value = mock_completion
         mock_groq.return_value = mock_client
@@ -32,16 +32,18 @@ class TestAIAnswerGeneration(unittest.TestCase):
         
         original_q = "What is 2+2? A) 3 B) 4 C) 5 D) 6"
         original_a = "B"
+        original_r = ""
         variant_q = "What is 3+3? A) 5 B) 6 C) 7 D) 8"
         
         answer = generator.generate_answer_for_variant(
             original_question=original_q,
             original_answer=original_a,
+            original_rubric=original_r,
             ai_generated_question=variant_q,
             question_type="MCQ"
         )
         
-        self.assertEqual(answer, "B")
+        self.assertIn('"answer": "B"', answer)
         mock_client.chat.completions.create.assert_called_once()
         
     def test_real_answer_generation(self):
@@ -61,6 +63,7 @@ class TestAIAnswerGeneration(unittest.TestCase):
         D) Rome
         """
         original_a = "B"
+        original_r = ""
         
         variant_q = """
         ### Question: Capital of Germany
@@ -74,6 +77,7 @@ class TestAIAnswerGeneration(unittest.TestCase):
         answer = self.generator.generate_answer_for_variant(
             original_question=original_q,
             original_answer=original_a,
+            original_rubric=original_r,
             ai_generated_question=variant_q,
             question_type="MCQ"
         )
@@ -87,6 +91,7 @@ class TestAIAnswerGeneration(unittest.TestCase):
         # Coding example
         print("\n--- Testing Coding Question ---")
         original_coding = "Write a function to sort an array using bubble sort."
+        original_a_coding = ""
         original_rubric = """
         Expected solution:
         - Implement nested loops
@@ -99,7 +104,8 @@ class TestAIAnswerGeneration(unittest.TestCase):
         
         coding_answer = self.generator.generate_answer_for_variant(
             original_question=original_coding,
-            original_answer=original_rubric,
+            original_answer=original_a_coding,
+            original_rubric=original_rubric,
             ai_generated_question=variant_coding,
             question_type="Coding"
         )

@@ -492,12 +492,27 @@
 
         function displayAnswerSection(content, data) {
             if (data.answer) {
-                const answerHtml = marked.parse(data.answer.correct_answer);
-                content.innerHTML = `
-                    <div class="mb-3">
-                        <strong>Correct Answer:</strong>
-                        <div class="border rounded p-3 mt-2" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${answerHtml}</div>
-                    </div>
+                let displayHtml = '';
+                if (data.answer.correct_answer) {
+                    const answerHtml = marked.parse(data.answer.correct_answer);
+                    displayHtml += `
+                        <div class="mb-3">
+                            <strong>Formal Answer:</strong>
+                            <div class="border rounded p-3 mt-2" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${answerHtml}</div>
+                        </div>
+                    `;
+                }
+                if (data.answer.rubric) {
+                    const rubricHtml = marked.parse(data.answer.rubric);
+                    displayHtml += `
+                        <div class="mb-3">
+                            <strong>Grading Rubric:</strong>
+                            <div class="border rounded p-3 mt-2" style="background:#0d1117;border-color:#30363d !important;color:#e6edf3">${rubricHtml}</div>
+                        </div>
+                    `;
+                }
+                
+                content.innerHTML = displayHtml + `
                     <div>
                         <strong>Max Marks:</strong> ${data.answer.max_marks}
                     </div>

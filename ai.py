@@ -176,32 +176,37 @@ Generated Question:"""
     
     def generate_answer_for_variant(self,
                                    original_question: str,
-                                   original_answer: str,
+                                   original_answer: Optional[str],
+                                   original_rubric: Optional[str],
                                    ai_generated_question: str,
                                    question_type: str) -> str:
         """
-        Generate the correct answer/rubric for an AI-generated question variant
-        based on the original question and its answer.
+        Generate the correct formal answer and grading rubric for an AI-generated question variant
+        based on the original question.
         
         Args:
             original_question: The original question text
-            original_answer: The correct answer/rubric for the original question
+            original_answer: The formal correct answer for the original question
+            original_rubric: The grading rubric for the original question
             ai_generated_question: The AI-generated variant question
             question_type: Type of question (MCQ, Coding, etc.)
             
         Returns:
-            Generated answer/rubric for the variant question
+            JSON string containing \"answer\" and \"rubric\" for the variant question
         """
-        prompt = f"""You are an expert educational assessment developer specializing in creating answer keys and grading rubrics for college-level courses.
+        prompt = f"""You are an expert educational assessment developer specializing in creating structured answer keys and grading rubrics for college-level courses.
 
 ## TASK:
-Generate the correct answer/rubric for an AI-generated variant question by analyzing the relationship between the original question and its answer.
+Generate the correct answer and grading rubric for an AI-generated variant question by analyzing the relationship between the original question and its answer/rubric.
 
 ## ORIGINAL QUESTION:
 {original_question}
 
-## ORIGINAL ANSWER/RUBRIC:
-{original_answer}
+## ORIGINAL ANSWER:
+{original_answer or 'N/A'}
+
+## ORIGINAL RUBRIC:
+{original_rubric or 'N/A'}
 
 ## AI-GENERATED VARIANT QUESTION:
 {ai_generated_question}
@@ -260,20 +265,28 @@ def linear_search(lst, target):
 
 ## CRITICAL INSTRUCTIONS:
 
-1. **Match Structure**: Your answer MUST follow the same structure, format, and level of detail as the original answer
-2. **Preserve Style**: If original uses bullet points, use bullet points. If it has code blocks, include code blocks. If it's a single letter, respond with a single letter.
-3. **Maintain Complexity**: Keep the same depth of explanation and technical rigor
-4. **Question Type Guidelines**:
-   - **MCQ**: Return ONLY the option letter (A/B/C/D) that is correct
-   - **True/False**: Return ONLY "True" or "False"
-   - **Fill-in-the-blank**: Return ONLY the exact word/phrase expected
-   - **Coding**: Provide complete, working code with same structure as original
-   - **Short Answer**: Match paragraph structure and key points format
-   - **Descriptive**: Include same number of points/sections with equivalent detail
+1. **Match Structure**: Your answer and rubric MUST follow the same structure, format, and level of detail as the original components.
+2. **Preserve Style**: If original uses bullet points, use bullet points. If it has code blocks, include code blocks.
+3. **Question Type Guidelines**:
+   - For **MCQ/True/False/Fill-in-the-blank**, the formal answer is the only part required. The rubric can be empty string "".
+   - For **Coding, Short Answer, Descriptive, Numerical**, the rubric is mandatory to explain the steps, breakdown of marks, or code solution structure. The formal answer could be the exact final value or short text.
 
-5. **Output Format**: Return ONLY the answer/rubric content. NO preambles like "The answer is..." or "Here is the solution...". START IMMEDIATELY with the answer content.
+4. **Structured JSON Output Format**: Return ONLY a valid JSON string with two keys: "answer" and "rubric".
+DO NOT include Markdown formatting (like ```json), just raw JSON string.
 
-Generated Answer/Rubric:"""
+Example Output format:
+{{
+  "answer": "B",
+  "rubric": ""
+}}
+
+OR for Descriptive:
+{{
+  "answer": "The time complexity is O(n log n).",
+  "rubric": "1. Merging takes O(n) \\n 2. Splitting takes log n levels. \\n 3. Total depth is log n."
+}}
+
+Generated JSON:"""
         
         try:
             completion = self.client.chat.completions.create(
@@ -281,7 +294,7 @@ Generated Answer/Rubric:"""
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a precise educational content generator. Output only the requested answer/rubric matching the original's structure exactly. No commentary or explanations about the answer itself."
+                        "content": "You are a precise educational content generator. Output ONLY valid JSON containing 'answer' and 'rubric' keys. Do not include markdown blocks or commentary."
                     },
                     {
                         "role": "user",

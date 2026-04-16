@@ -236,6 +236,7 @@ class EnhancedPaperGeneration:
         try:
             if format_type == 'markdown':
                 file_path = self._save_as_markdown(paper_data, filename)
+                self._save_answer_key_as_markdown(paper_data, filename)
             elif format_type == 'json':
                 file_path = self._save_as_json(paper_data, filename)
             elif format_type == 'html':
@@ -266,7 +267,9 @@ class EnhancedPaperGeneration:
         Saves paper to file and returns file path
         """
         if format_type == 'markdown':
-            return self._save_as_markdown(paper_data, filename)
+            file_path = self._save_as_markdown(paper_data, filename)
+            self._save_answer_key_as_markdown(paper_data, filename)
+            return file_path
         elif format_type == 'json':
             return self._save_as_json(paper_data, filename)
         elif format_type == 'html':
@@ -318,6 +321,41 @@ class EnhancedPaperGeneration:
             f.write(content)
         
         return str(file_path)
+    
+    def _save_answer_key_as_markdown(self, paper_data: Dict[str, Any], filename: str) -> str:
+        """Save paper answer key as markdown"""
+        key_file_path = self.papers_folder / f"{filename}_key.md"
+        
+        content = f"# Answer Key\n\n"
+        content += f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        content += f"**Total Questions:** {paper_data['metadata']['total_questions']}\n\n---\n\n"
+        
+        conn = sqlite3.connect(self.database_path)
+        cursor = conn.cursor()
+        
+        for i, q in enumerate(paper_data['questions'], 1):
+            q_id = q.get('id')
+            content += f"### Question {i}\n\n**Title:** {q['title']}\n\n"
+            
+            if q_id:
+                cursor.execute("SELECT correct_answer, rubric FROM question_answers WHERE question_id = ?", (q_id,))
+                ans_rec = cursor.fetchone()
+                
+                correct_ans = ans_rec[0] if ans_rec and ans_rec[0] else None
+                rubric = ans_rec[1] if ans_rec and ans_rec[1] else None
+                
+                if correct_ans:
+                    content += f"**Formal Answer:**\n{correct_ans}\n\n"
+                if rubric:
+                    content += f"**Grading Rubric:**\n{rubric}\n\n"
+            content += "---\n\n"
+            
+        conn.close()
+        
+        with open(key_file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        return str(key_file_path)
     
     def _save_as_json(self, paper_data: Dict[str, Any], filename: str) -> str:
         """Save paper as JSON"""

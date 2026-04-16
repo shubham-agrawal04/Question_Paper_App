@@ -34,10 +34,10 @@ class TestAnswerStorage(unittest.TestCase):
     def get_question_answer(self, question_id):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT correct_answer FROM question_answers WHERE question_id = ?", (question_id,))
+        cursor.execute("SELECT correct_answer, rubric FROM question_answers WHERE question_id = ?", (question_id,))
         result = cursor.fetchone()
         conn.close()
-        return result[0] if result else None
+        return result
 
     def test_mcq_answer_storage(self):
         """Test storing answer for MCQ"""
@@ -55,7 +55,9 @@ class TestAnswerStorage(unittest.TestCase):
             }, follow_redirects=True)
             
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(self.get_question_answer(1), 'B')
+            res = self.get_question_answer(1)
+            self.assertEqual(res[0], 'B')
+            self.assertEqual(res[1], '')
 
     def test_coding_rubric_storage(self):
         """Test storing rubric for Coding question"""
@@ -70,11 +72,14 @@ class TestAnswerStorage(unittest.TestCase):
                 'estimated_time': '15',
                 'bloom_level': 'Create',
                 'full_question_text': 'Write a sort function',
+                'correct_answer': 'See code block',
                 'answer_rubric': rubric_text
             }, follow_redirects=True)
             
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(self.get_question_answer(1), rubric_text)
+            res = self.get_question_answer(1)
+            self.assertEqual(res[0], 'See code block')
+            self.assertEqual(res[1], rubric_text)
 
     def test_numerical_rubric_storage(self):
         """Test storing rubric for Numerical question"""
@@ -89,11 +94,14 @@ class TestAnswerStorage(unittest.TestCase):
                 'estimated_time': '10',
                 'bloom_level': 'Apply',
                 'full_question_text': 'What is 6*7?',
-                'answer_rubric': answer_text
+                'correct_answer': answer_text,
+                'answer_rubric': '1 mark for correct math'
             }, follow_redirects=True)
             
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(self.get_question_answer(1), answer_text)
+            res = self.get_question_answer(1)
+            self.assertEqual(res[0], answer_text)
+            self.assertEqual(res[1], '1 mark for correct math')
 
 if __name__ == '__main__':
     unittest.main()

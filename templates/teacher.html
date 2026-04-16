@@ -133,24 +133,24 @@
                                 </div>
                             </div>
 
-                            <!-- Correct Answer / Rubric -->
+                            <!-- Correct Answer -->
                             <div class="mb-3" id="correct_answer_section" style="display: none;">
                                 <label for="correct_answer" class="form-label">
-                                    <i class="bi bi-check-circle-fill"></i> <span id="answer_label">Correct
-                                        Answer</span>
+                                    <i class="bi bi-check-circle-fill"></i> <span id="answer_label">Correct Answer</span> *
                                 </label>
+                                <textarea class="form-control" id="correct_answer" name="correct_answer" rows="2"
+                                    placeholder="Enter the correct answer..."></textarea>
+                                <small class="text-muted" id="answer_help_text">Enter the exact required answer.</small>
+                            </div>
 
-                                <!-- Simple Input for MCQ, True/False, Fill-in-the-blank -->
-                                <input type="text" class="form-control" id="correct_answer" name="correct_answer"
-                                    placeholder="e.g., A, B, C, or D">
-
-                                <!-- Textarea for Rubric/Complex questions -->
+                            <!-- Grading Rubric -->
+                            <div class="mb-3" id="rubric_section" style="display: none;">
+                                <label for="answer_rubric" class="form-label">
+                                    <i class="bi bi-list-check"></i> <span id="rubric_label">Grading Rubric</span> *
+                                </label>
                                 <textarea class="form-control" id="answer_rubric" name="answer_rubric" rows="5"
-                                    style="display: none;"
                                     placeholder="Enter the detailed evaluation rubric, expected key points, or code solution..."></textarea>
-
-                                <small class="text-muted" id="answer_help_text">Enter the option label (A, B, C, D)
-                                    corresponding to the correct answer.</small>
+                                <small class="text-muted" id="rubric_help_text">Provide the detailed rubric for evaluating the response.</small>
                             </div>
 
                             <!-- Max Marks -->
