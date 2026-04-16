@@ -903,7 +903,7 @@ def create_paper():
             "redirect": url_for('configure_question')
         })
     
-    return render_template('create_paper.html')
+    return render_template('create_paper.html', question_types=QUESTION_TYPES)
 
 @app.route('/configure_question', methods=['GET'])
 @teacher_required
@@ -1901,6 +1901,295 @@ def save_paper():
             'status': 'error',
             'message': f'Error saving paper: {str(e)}'
         }), 400
+
+# ==================== AUTO-GENERATE PAPER ENDPOINTS ====================
+
+@app.route('/api/paper/auto/topics')
+@teacher_required
+def auto_paper_topics():
+    """Get all available topics grouped by subject for paper auto-generation"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT subject, topic, COUNT(*) as question_count
+            FROM questions
+            WHERE is_ai_generated = 0 OR acceptance_status = 'accepted'
+            GROUP BY subject, topic
+            ORDER BY subject, topic
+        ''')
+
+        topics = []
+        for row in cursor.fetchall():
+            topics.append({
+                'subject': row[0],
+                'topic': row[1],
+                'question_count': row[2]
+            })
+
+        conn.close()
+        return jsonify({'status': 'success', 'topics': topics})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+@app.route('/api/paper/auto/check')
+@teacher_required
+def auto_paper_check():
+    """Check available question families per type for given topics"""
+    try:
+        selected_topics = request.args.getlist('topics')
+
+        if not selected_topics:
+            return jsonify({'status': 'error', 'message': 'No topics selected'}), 400
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        # Build topic filter
+        topic_conditions = []
+        params = []
+        for topic in selected_topics:
+            if ':' in topic:
+                subject, topic_name = topic.split(':', 1)
+                topic_conditions.append('(subject = ? AND topic = ?)')
+                params.extend([subject, topic_name])
+
+        if not topic_conditions:
+            conn.close()
+            return jsonify({'status': 'error', 'message': 'Invalid topic format'}), 400
+
+        topic_filter = ' OR '.join(topic_conditions)
+
+        # Get all question type counts requested
+        type_counts = {}
+        for key, value in request.args.items():
+            if key.startswith('type_'):
+                qtype = key[5:]  # strip 'type_' prefix
+                type_counts[qtype] = int(value)
+
+        availability = {}
+        for qtype, requested in type_counts.items():
+            # Count unique question families for this type and topics
+            # A "family" is: the parent question (parent_question_id IS NULL) grouped with its variants
+            # For original questions: COALESCE(parent_question_id, id) gives the family root
+            cursor.execute(f'''
+                SELECT COUNT(DISTINCT COALESCE(parent_question_id, id)) as family_count
+                FROM questions
+                WHERE ({topic_filter})
+                  AND question_type = ?
+                  AND (is_ai_generated = 0 OR acceptance_status = 'accepted')
+            ''', params + [qtype])
+
+            result = cursor.fetchone()
+            available_families = result[0] if result else 0
+
+            availability[qtype] = {
+                'requested': requested,
+                'available_families': available_families
+            }
+
+        conn.close()
+        return jsonify({'status': 'success', 'availability': availability})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+@app.route('/api/paper/auto/generate', methods=['POST'])
+@teacher_required
+def auto_paper_generate():
+    """Auto-generate papers by randomly picking questions without replacement.
+    
+    Once a question is picked, its entire family (parent + all variants) is excluded
+    from further selection. Each paper variant gets its own independent random selection.
+    """
+    import random
+
+    try:
+        data = request.json
+        selected_topics = data.get('topics', [])
+        type_counts = data.get('question_type_counts', {})
+        num_papers = int(data.get('num_papers', 1))
+
+        if not selected_topics:
+            return jsonify({'status': 'error', 'message': 'No topics selected'}), 400
+        if not type_counts:
+            return jsonify({'status': 'error', 'message': 'No question types specified'}), 400
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        # Build topic filter
+        topic_conditions = []
+        topic_params = []
+        for topic in selected_topics:
+            if ':' in topic:
+                subject, topic_name = topic.split(':', 1)
+                topic_conditions.append('(subject = ? AND topic = ?)')
+                topic_params.extend([subject, topic_name])
+
+        if not topic_conditions:
+            conn.close()
+            return jsonify({'status': 'error', 'message': 'Invalid topic format'}), 400
+
+        topic_filter = ' OR '.join(topic_conditions)
+
+        # For each question type, get all eligible questions grouped by family
+        # family_id = COALESCE(parent_question_id, id)
+        question_pool = {}  # { question_type: { family_id: [question_rows] } }
+
+        for qtype in type_counts:
+            cursor.execute(f'''
+                SELECT id, title, question_type, subject, topic, subtopic,
+                       difficulty_level, estimated_time, bloom_level,
+                       COALESCE(parent_question_id, id) as family_id
+                FROM questions
+                WHERE ({topic_filter})
+                  AND question_type = ?
+                  AND (is_ai_generated = 0 OR acceptance_status = 'accepted')
+                ORDER BY family_id
+            ''', topic_params + [qtype])
+
+            families = {}
+            for row in cursor.fetchall():
+                fam_id = row[9]
+                if fam_id not in families:
+                    families[fam_id] = []
+                families[fam_id].append({
+                    'id': row[0],
+                    'title': row[1],
+                    'question_type': row[2],
+                    'subject': row[3],
+                    'topic': row[4],
+                    'subtopic': row[5],
+                    'difficulty_level': row[6],
+                    'estimated_time': row[7],
+                    'bloom_level': row[8],
+                    'family_id': fam_id
+                })
+
+            question_pool[qtype] = families
+
+        # Validate we have enough families for each type
+        for qtype, count in type_counts.items():
+            available = len(question_pool.get(qtype, {}))
+            if available < count:
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Not enough {qtype} questions. Need {count}, but only {available} unique question families available.'
+                }), 400
+
+        # Create folder for papers
+        folder_name = f"paper_set_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        paper_folder = Path('Generated Papers') / folder_name
+        paper_folder.mkdir(parents=True, exist_ok=True)
+
+        total_questions = sum(type_counts.values())
+        pdf_urls = []
+        md_urls = []
+
+        for paper_idx in range(1, num_papers + 1):
+            paper_questions = []
+
+            # For each question type, randomly pick families without replacement
+            for qtype, count in type_counts.items():
+                families = question_pool.get(qtype, {})
+                family_ids = list(families.keys())
+                random.shuffle(family_ids)
+
+                picked_families = family_ids[:count]
+
+                for fam_id in picked_families:
+                    # From the family, randomly pick one member
+                    members = families[fam_id]
+                    chosen = random.choice(members)
+                    paper_questions.append(chosen)
+
+            # Shuffle the final order so types are mixed
+            random.shuffle(paper_questions)
+
+            # Build paper markdown
+            md_content = f"# Paper {paper_idx}\n\n"
+            for q_num, q in enumerate(paper_questions, 1):
+                # Read the question markdown file
+                subject = q['subject']
+                topic = q['topic']
+                subtopic = q['subtopic']
+                q_id = q['id']
+
+                folder_path = create_folder_structure(subject, topic, subtopic)
+                file_path = folder_path / f"{q_id}.md"
+
+                question_content = ""
+                if file_path.exists():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        question_content = f.read()
+                else:
+                    # Try without subtopic
+                    folder_path_alt = create_folder_structure(subject, topic, None)
+                    file_path_alt = folder_path_alt / f"{q_id}.md"
+                    if file_path_alt.exists():
+                        with open(file_path_alt, 'r', encoding='utf-8') as f:
+                            question_content = f.read()
+                    else:
+                        # Search all locations
+                        base_path = Path(QUESTION_BANK_FOLDER)
+                        for md_file in base_path.rglob(f"{q_id}.md"):
+                            with open(md_file, 'r', encoding='utf-8') as f:
+                                question_content = f.read()
+                            break
+
+                if not question_content:
+                    question_content = f"[Question content not found for ID: {q_id}]"
+
+                md_content += f"## Question {q_num}\n\n{question_content}\n\n---\n\n"
+
+            # Write MD file
+            md_file_path = paper_folder / f"paper_{paper_idx}.md"
+            with open(md_file_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+
+            md_urls.append({
+                'name': f"paper_{paper_idx}.md",
+                'url': url_for('download_pdf', folder=paper_folder.name, filename=f"paper_{paper_idx}.md")
+            })
+
+            # Generate PDF
+            pdf_file_path = paper_folder / f"paper_{paper_idx}.pdf"
+            try:
+                convert_md_to_pdf(str(md_file_path), str(pdf_file_path))
+                pdf_urls.append({
+                    'name': f"paper_{paper_idx}.pdf",
+                    'url': url_for('download_pdf', folder=paper_folder.name, filename=f"paper_{paper_idx}.pdf")
+                })
+                print(f"[AUTO-PAPER] Generated PDF: {pdf_file_path}")
+            except Exception as pdf_err:
+                print(f"[AUTO-PAPER] PDF generation failed for paper {paper_idx}: {pdf_err}")
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Generated {num_papers} paper(s) with {total_questions} questions each',
+            'num_papers': num_papers,
+            'total_questions': total_questions,
+            'pdf_urls': pdf_urls,
+            'md_urls': md_urls,
+            'paper_folder': paper_folder.name
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Error generating papers: {str(e)}'
+        }), 400
+
 
 @app.route('/random-practice')
 @student_required
